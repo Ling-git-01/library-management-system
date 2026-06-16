@@ -1,0 +1,340 @@
+/* ===端口修改196 === */
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图书搜索 - 图书馆借阅系统</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f0f2f5;
+      color: #333;
+    }
+    /* === 导航栏 === */
+    .navbar {
+      background: linear-gradient(135deg, #1a1a2e, #0f3460);
+      color: #fff;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      gap: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+    .navbar .brand { font-size: 18px; font-weight: 700; flex: 1; }
+    .navbar a {
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .navbar a:hover { background: rgba(255,255,255,0.15); }
+    .navbar .user-name { color: #e94560; font-weight: 600; font-size: 14px; }
+
+    /* === 主内容 === */
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+    /* === 搜索区 === */
+    .search-bar {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .search-bar input {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 16px;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+    }
+    .search-bar input:focus { border-color: #533483; }
+    .search-bar select {
+      padding: 10px 14px;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+      background: #fff;
+      min-width: 140px;
+    }
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary { background: linear-gradient(135deg, #533483, #7b2cbf); color: #fff; }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-reset { background: #f0f0f5; color: #555; }
+    .btn-reset:hover { background: #e0e0eb; }
+
+    /* === 图书网格 === */
+    .book-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .book-card {
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+    .book-card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      background: #e8e8ee;
+    }
+    .book-info { padding: 12px; }
+    .book-title { font-size: 14px; font-weight: 600; color: #222; margin-bottom: 4px; line-height: 1.4;
+                  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .book-author { font-size: 12px; color: #888; margin-bottom: 6px; }
+    .book-available {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .available-yes { background: #e8f5e9; color: #2e7d32; }
+    .available-no { background: #ffebee; color: #c62828; }
+
+    /* === 分页 === */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .page-btn {
+      padding: 8px 14px;
+      border: 1.5px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .page-btn:hover { border-color: #533483; color: #533483; }
+    .page-btn.active { background: #533483; color: #fff; border-color: #533483; }
+    .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* === 空状态 === */
+    .empty { text-align: center; padding: 60px 20px; color: #aaa; }
+    .empty .icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* === Loading === */
+    .loading { text-align: center; padding: 40px; color: #888; font-size: 14px; }
+
+    .toast {
+      position: fixed; top: 20px; right: 20px;
+      padding: 12px 20px; border-radius: 8px;
+      color: #fff; font-size: 14px; z-index: 9999; display: none;
+    }
+    .toast.success { background: #4caf50; }
+    .toast.error { background: #e94560; }
+  </style>
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav class="navbar">
+  <div class="brand">📚 图书馆借阅系统</div>
+  <a href="index.html">首页</a>
+  <a href="profile.html">个人中心</a>
+  <span class="user-name" id="navUser">未登录</span>
+  <a href="#" id="logoutBtn" onclick="logout()">退出</a>
+</nav>
+
+<div class="container">
+  <!-- 搜索栏 -->
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="搜索书名、作者、ISBN..." onkeydown="if(event.key==='Enter')searchBooks()">
+    <select id="categorySelect" onchange="searchBooks()">
+      <option value="">全部分类</option>
+    </select>
+    <button class="btn btn-primary" onclick="searchBooks()">🔍 搜索</button>
+    <button class="btn btn-reset" onclick="resetSearch()">重置</button>
+  </div>
+
+  <!-- 图书列表 -->
+  <div id="bookList" class="book-grid">
+    <div class="loading">加载中...</div>
+  </div>
+
+  <!-- 分页 -->
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API_BASE = 'http://localhost:8080';
+  let currentPage = 1;
+  const PAGE_SIZE = 12;
+
+  // 初始化
+  (function init() {
+    // 检查登录状态
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    if (user) {
+      document.getElementById('navUser').textContent = user.real_name || user.username;
+    }
+
+    // 加载分类
+    loadCategories();
+    // 加载图书
+    loadBooks();
+  })();
+
+  // 加载分类列表
+  async function loadCategories() {
+    try {
+      const res = await fetch(`${API_BASE}/api/categories`);
+      const data = await res.json();
+      const select = document.getElementById('categorySelect');
+      (data.list || data).forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat.id;
+        opt.textContent = cat.name;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      console.warn('分类加载失败:', err);
+    }
+  }
+
+  // 加载图书列表（核心函数）
+  async function loadBooks() {
+    const keyword = document.getElementById('searchInput').value.trim();
+    const categoryId = document.getElementById('categorySelect').value;
+
+    // 构建请求URL（前端搜索关键词 → URL参数 → 后端 WHERE title LIKE '%keyword%'）
+    let url = `${API_BASE}/api/books?page=${currentPage}&pageSize=${PAGE_SIZE}`;
+    if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+    if (categoryId) url += `&categoryId=${categoryId}`;
+
+    document.getElementById('bookList').innerHTML = '<div class="loading">加载中...</div>';
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+
+      const books = data.list || data.data || [];
+      const total = data.total || 0;
+
+      renderBooks(books);
+      renderPagination(total);
+    } catch (err) {
+      document.getElementById('bookList').innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>加载失败，请检查后端服务</p></div>';
+    }
+  }
+
+  // 渲染图书卡片
+  function renderBooks(books) {
+    const container = document.getElementById('bookList');
+    if (!books.length) {
+      container.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="icon">📭</div><p>没有找到相关图书</p></div>';
+      return;
+    }
+
+    container.innerHTML = books.map(b => `
+      <div class="book-card" onclick="goDetail(${b.id})">
+        <img src="${b.cover_url || 'https://picsum.photos/200/300?random=' + b.id}"
+             alt="${b.title}"
+             onerror="this.src='https://picsum.photos/200/300?random=${b.id}'">
+        <div class="book-info">
+          <div class="book-title">${b.title}</div>
+          <div class="book-author">${b.author || '未知作者'}</div>
+          <span class="book-available ${b.available_copies > 0 ? 'available-yes' : 'available-no'}">
+            ${b.available_copies > 0 ? '可借 ' + b.available_copies + '/' + b.total_copies : '暂不可借'}
+          </span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // 渲染分页
+  function renderPagination(total) {
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const pager = document.getElementById('pagination');
+
+    if (totalPages <= 1) { pager.innerHTML = ''; return; }
+
+    let html = '';
+    html += `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>上一页</button>`;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) {
+        html += `<button class="page-btn ${i===currentPage?'active':''}" onclick="goPage(${i})">${i}</button>`;
+      } else if (Math.abs(i - currentPage) === 3) {
+        html += `<span style="padding:8px 4px;color:#aaa">...</span>`;
+      }
+    }
+
+    html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>下一页</button>`;
+    pager.innerHTML = html;
+  }
+
+  function goPage(page) {
+    currentPage = page;
+    loadBooks();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function searchBooks() {
+    currentPage = 1;
+    loadBooks();
+  }
+
+  function resetSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('categorySelect').value = '';
+    currentPage = 1;
+    loadBooks();
+  }
+
+  function goDetail(bookId) {
+    window.location.href = `detail.html?id=${bookId}`;
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = 'login.html';
+  }
+
+  function showToast(msg, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.className = 'toast ' + type;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  }
+</script>
+</body>
+</html>

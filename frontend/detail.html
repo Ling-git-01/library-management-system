@@ -1,0 +1,457 @@
+/* ===端口修改187 === */
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图书详情 - 图书馆借阅系统</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f0f2f5; color: #333;
+    }
+    .navbar {
+      background: linear-gradient(135deg, #1a1a2e, #0f3460);
+      color: #fff; padding: 0 24px;
+      display: flex; align-items: center; height: 56px; gap: 20px;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+    .navbar .brand { font-size: 18px; font-weight: 700; flex: 1; }
+    .navbar a { color: rgba(255,255,255,0.85); text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 6px; }
+    .navbar a:hover { background: rgba(255,255,255,0.15); }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+    /* === 图书主信息区 === */
+    .book-main {
+      background: #fff;
+      border-radius: 14px;
+      padding: 28px;
+      display: flex;
+      gap: 28px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
+    }
+    .book-cover { width: 160px; flex-shrink: 0; }
+    .book-cover img { width: 160px; height: 220px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+    .book-detail { flex: 1; }
+    .book-title { font-size: 22px; font-weight: 700; color: #1a1a2e; margin-bottom: 6px; }
+    .book-author { font-size: 15px; color: #666; margin-bottom: 16px; }
+    .book-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+    .meta-item { font-size: 13px; color: #555; }
+    .meta-item span { font-weight: 600; color: #222; }
+    .book-desc { font-size: 14px; color: #666; line-height: 1.7; margin-bottom: 20px; }
+
+    /* 可借数量 */
+    .stock-info {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .stock-ok { background: #e8f5e9; color: #2e7d32; }
+    .stock-empty { background: #ffebee; color: #c62828; }
+
+    /* 操作按钮 */
+    .action-btns { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      padding: 12px 28px;
+      border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-borrow { background: linear-gradient(135deg, #533483, #7b2cbf); color: #fff; }
+    .btn-borrow:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-borrow:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-reserve { background: linear-gradient(135deg, #e67e22, #d35400); color: #fff; }
+    .btn-reserve:hover { opacity: 0.88; }
+
+    /* === 评分 === */
+    .rating-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .stars { color: #f4a100; font-size: 18px; letter-spacing: 2px; }
+    .rating-num { font-size: 24px; font-weight: 700; color: #f4a100; }
+    .rating-count { font-size: 13px; color: #888; }
+
+    /* === 书评区 === */
+    .reviews-section {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px 28px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
+    }
+    .section-title { font-size: 17px; font-weight: 700; color: #1a1a2e; margin-bottom: 16px; }
+
+    /* 发表书评 */
+    .review-form { background: #f9f9fb; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+    .star-select { display: flex; gap: 4px; margin-bottom: 12px; font-size: 28px; cursor: pointer; }
+    .star-select span { color: #ddd; transition: color 0.1s; }
+    .star-select span.lit { color: #f4a100; }
+    .review-form textarea {
+      width: 100%; height: 80px;
+      padding: 10px 14px;
+      border: 1.5px solid #ddd; border-radius: 8px;
+      font-size: 13px; resize: vertical; outline: none;
+      font-family: inherit;
+    }
+    .review-form textarea:focus { border-color: #533483; }
+    .btn-submit-review {
+      margin-top: 10px;
+      padding: 8px 20px;
+      background: #533483; color: #fff;
+      border: none; border-radius: 6px; font-size: 13px;
+      font-weight: 600; cursor: pointer;
+    }
+    .btn-submit-review:hover { opacity: 0.88; }
+
+    /* 书评列表 */
+    .review-item { border-bottom: 1px solid #f0f0f5; padding: 14px 0; }
+    .review-item:last-child { border-bottom: none; }
+    .review-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .review-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, #533483, #7b2cbf);
+      color: #fff; font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .review-user { font-size: 13px; font-weight: 600; color: #333; }
+    .review-stars { color: #f4a100; font-size: 13px; }
+    .review-date { font-size: 12px; color: #aaa; margin-left: auto; }
+    .review-content { font-size: 13px; color: #555; line-height: 1.7; }
+
+    .empty { text-align: center; padding: 30px; color: #aaa; font-size: 14px; }
+
+    .toast {
+      position: fixed; top: 20px; right: 20px;
+      padding: 12px 20px; border-radius: 8px;
+      color: #fff; font-size: 14px; z-index: 9999; display: none;
+    }
+    .toast.success { background: #4caf50; }
+    .toast.error { background: #e94560; }
+    .toast.info { background: #1565c0; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="brand">📚 图书馆借阅系统</div>
+  <a href="index.html">← 返回图书列表</a>
+  <a href="profile.html">个人中心</a>
+</nav>
+
+<div class="container">
+
+  <!-- 图书主信息区 -->
+  <div class="book-main" id="bookMain">
+    <div style="text-align:center;padding:60px;color:#aaa;width:100%">加载中...</div>
+  </div>
+
+  <!-- 书评区 -->
+  <div class="reviews-section">
+    <div class="section-title">📝 读者书评</div>
+
+    <!-- 发表书评表单（需要登录） -->
+    <div class="review-form" id="reviewFormBox">
+      <div style="font-size:13px;font-weight:600;color:#444;margin-bottom:8px;">发表我的书评</div>
+      <div class="star-select" id="starSelect">
+        <span data-v="1">★</span>
+        <span data-v="2">★</span>
+        <span data-v="3">★</span>
+        <span data-v="4">★</span>
+        <span data-v="5">★</span>
+      </div>
+      <textarea id="reviewContent" placeholder="写下你对这本书的看法...（可选）"></textarea>
+      <button class="btn-submit-review" onclick="submitReview()">提交书评</button>
+    </div>
+
+    <!-- 书评列表 -->
+    <div id="reviewList"><div class="empty">暂无书评</div></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API_BASE = 'http://localhost:8080';
+
+  // 从URL取图书ID
+  const params = new URLSearchParams(window.location.search);
+  const bookId = params.get('id');
+
+  let selectedRating = 0;
+  let currentBook = null;
+
+  // 初始化
+  if (!bookId) {
+    window.location.href = 'index.html';
+  } else {
+    loadBookDetail();
+    loadReviews();
+    initStarSelect();
+  }
+
+  // 检查是否已登录
+  function getToken() {
+    return localStorage.getItem('token');
+  }
+
+  // 加载图书详情
+  async function loadBookDetail() {
+    try {
+      const res = await fetch(`${API_BASE}/api/books/${bookId}`);
+      const data = await res.json();
+      currentBook = data.book || data;
+      renderBookDetail(currentBook);
+    } catch (err) {
+      document.getElementById('bookMain').innerHTML = '<div style="text-align:center;padding:60px;color:#e94560;">加载失败，请检查后端服务</div>';
+    }
+  }
+
+  // 渲染图书详情
+  function renderBookDetail(b) {
+    const canBorrow = b.available_copies > 0;
+
+    document.getElementById('bookMain').innerHTML = `
+      <div class="book-cover">
+        <img src="${b.cover_url || 'https://picsum.photos/200/300?random=' + b.id}"
+             onerror="this.src='https://picsum.photos/200/300?random=${b.id}'"
+             alt="${b.title}">
+      </div>
+      <div class="book-detail">
+        <div class="book-title">${b.title}</div>
+        <div class="book-author">作者：${b.author || '未知'}</div>
+
+        <div class="rating-box">
+          <div class="rating-num">${b.avg_rating ? Number(b.avg_rating).toFixed(1) : '暂无'}</div>
+          <div class="stars">${renderStars(b.avg_rating || 0)}</div>
+          <div class="rating-count">(${b.review_count || 0}条评价)</div>
+        </div>
+
+        <div class="book-meta">
+          <div class="meta-item">ISBN：<span>${b.isbn || '-'}</span></div>
+          <div class="meta-item">出版社：<span>${b.publisher || '-'}</span></div>
+          <div class="meta-item">出版年份：<span>${b.publish_year || '-'}</span></div>
+          <div class="meta-item">分类：<span>${b.category_name || '-'}</span></div>
+          <div class="meta-item">书架位置：<span>${b.location || '-'}</span></div>
+          <div class="meta-item">馆藏数量：<span>${b.total_copies || 1}</span></div>
+        </div>
+
+        ${b.description ? `<div class="book-desc">${b.description}</div>` : ''}
+
+        <div class="stock-info ${canBorrow ? 'stock-ok' : 'stock-empty'}">
+          ${canBorrow
+            ? `✅ 可借册数：${b.available_copies} / ${b.total_copies}`
+            : `❌ 暂不可借（可借：0 / ${b.total_copies}）`}
+        </div>
+
+        <div class="action-btns">
+          ${canBorrow
+            ? `<button class="btn btn-borrow" id="borrowBtn" onclick="borrowBook(${b.id})">📖 立即借阅</button>`
+            : `<button class="btn btn-borrow" disabled>📖 暂不可借</button>
+               <button class="btn btn-reserve" onclick="reserveBook(${b.id})">🔔 预约此书</button>`}
+        </div>
+      </div>
+    `;
+  }
+
+  // 借阅图书（调用借书事务API！）
+  async function borrowBook(bookId) {
+    const token = getToken();
+    if (!token) {
+      showToast('请先登录后再借阅', 'error');
+      setTimeout(() => window.location.href = 'login.html', 1200);
+      return;
+    }
+
+    const btn = document.getElementById('borrowBtn');
+    btn.disabled = true;
+    btn.textContent = '借阅中...';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/borrow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token   // 携带JWT Token
+        },
+        body: JSON.stringify({ bookId: bookId })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast('借阅成功！请在个人中心查看借阅记录', 'success');
+        // 刷新图书详情（available_copies 会减1）
+        setTimeout(() => loadBookDetail(), 1500);
+      } else {
+        // 后端事务回滚时，这里会收到错误信息
+        showToast(data.message || '借阅失败，请重试', 'error');
+        btn.disabled = false;
+        btn.textContent = '📖 立即借阅';
+      }
+    } catch (err) {
+      showToast('网络错误，请检查后端服务', 'error');
+      btn.disabled = false;
+      btn.textContent = '📖 立即借阅';
+    }
+  }
+
+  // 预约图书（当可借册数=0时）
+  async function reserveBook(bookId) {
+    const token = getToken();
+    if (!token) {
+      showToast('请先登录后再预约', 'error');
+      setTimeout(() => window.location.href = 'login.html', 1200);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/reservations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ bookId: bookId })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast('预约成功！有可借册数时将通知您', 'success');
+      } else {
+        showToast(data.message || '预约失败，请重试', 'error');
+      }
+    } catch (err) {
+      showToast('网络错误，请检查后端服务', 'error');
+    }
+  }
+
+  // 加载书评列表
+  async function loadReviews() {
+    try {
+      const res = await fetch(`${API_BASE}/api/reviews?bookId=${bookId}`);
+      const data = await res.json();
+      const reviews = data.list || data.data || [];
+      renderReviews(reviews);
+    } catch (err) {
+      console.warn('书评加载失败:', err);
+    }
+  }
+
+  // 渲染书评列表
+  function renderReviews(reviews) {
+    const el = document.getElementById('reviewList');
+    if (!reviews.length) {
+      el.innerHTML = '<div class="empty">暂无书评，来发表第一条吧！</div>';
+      return;
+    }
+    el.innerHTML = reviews.map(r => `
+      <div class="review-item">
+        <div class="review-header">
+          <div class="review-avatar">${(r.username || '匿名').charAt(0).toUpperCase()}</div>
+          <div class="review-user">${r.username || '匿名读者'}</div>
+          <div class="review-stars">${renderStars(r.rating)}</div>
+          <div class="review-date">${formatDate(r.created_at)}</div>
+        </div>
+        <div class="review-content">${r.content || '该用户没有留下书评内容'}</div>
+      </div>
+    `).join('');
+  }
+
+  // 提交书评
+  async function submitReview() {
+    const token = getToken();
+    if (!token) {
+      showToast('请先登录后才能发表书评', 'error');
+      setTimeout(() => window.location.href = 'login.html', 1200);
+      return;
+    }
+    if (selectedRating === 0) {
+      showToast('请先选择评分（1-5星）', 'error');
+      return;
+    }
+
+    const content = document.getElementById('reviewContent').value.trim();
+
+    try {
+      const res = await fetch(`${API_BASE}/api/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ bookId: parseInt(bookId), rating: selectedRating, content })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast('书评发表成功！', 'success');
+        document.getElementById('reviewContent').value = '';
+        selectedRating = 0;
+        updateStarDisplay(0);
+        loadReviews();
+        loadBookDetail(); // 刷新平均评分
+      } else {
+        showToast(data.message || '发表失败，请重试', 'error');
+      }
+    } catch (err) {
+      showToast('网络错误', 'error');
+    }
+  }
+
+  // 星级选择
+  function initStarSelect() {
+    const stars = document.querySelectorAll('#starSelect span');
+    stars.forEach(star => {
+      star.addEventListener('click', function() {
+        selectedRating = parseInt(this.dataset.v);
+        updateStarDisplay(selectedRating);
+      });
+      star.addEventListener('mouseenter', function() {
+        updateStarDisplay(parseInt(this.dataset.v));
+      });
+    });
+    document.getElementById('starSelect').addEventListener('mouseleave', function() {
+      updateStarDisplay(selectedRating);
+    });
+  }
+
+  function updateStarDisplay(rating) {
+    document.querySelectorAll('#starSelect span').forEach((s, i) => {
+      s.classList.toggle('lit', i < rating);
+    });
+  }
+
+  // 渲染星级
+  function renderStars(rating) {
+    const r = Math.round(rating || 0);
+    return '★'.repeat(r) + '☆'.repeat(5 - r);
+  }
+
+  // 格式化日期
+  function formatDate(str) {
+    if (!str) return '';
+    return new Date(str).toLocaleDateString('zh-CN');
+  }
+
+  function showToast(msg, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.className = 'toast ' + type;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  }
+</script>
+</body>
+</html>

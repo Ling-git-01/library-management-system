@@ -1,0 +1,568 @@
+/* ===端口修改292= */
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>个人中心 - 图书馆借阅系统</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f0f2f5; color: #333;
+    }
+    .navbar {
+      background: linear-gradient(135deg, #1a1a2e, #0f3460);
+      color: #fff; padding: 0 24px;
+      display: flex; align-items: center; height: 56px; gap: 20px;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+    .navbar .brand { font-size: 18px; font-weight: 700; flex: 1; }
+    .navbar a { color: rgba(255,255,255,0.85); text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 6px; }
+    .navbar a:hover { background: rgba(255,255,255,0.15); }
+
+    .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
+
+    /* === 用户信息卡 === */
+    .user-card {
+      background: linear-gradient(135deg, #533483, #7b2cbf);
+      color: #fff;
+      border-radius: 14px;
+      padding: 24px 28px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 4px 20px rgba(83,52,131,0.3);
+    }
+    .user-avatar {
+      width: 64px; height: 64px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      font-size: 28px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .user-info h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .user-info p { font-size: 13px; opacity: 0.85; }
+    .user-stats { margin-left: auto; display: flex; gap: 24px; text-align: center; }
+    .stat-item .num { font-size: 24px; font-weight: 700; }
+    .stat-item .label { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+
+    /* === Tab标签 === */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 6px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #888;
+      transition: all 0.2s;
+      border: none;
+      background: transparent;
+    }
+    .tab.active { background: linear-gradient(135deg, #533483, #7b2cbf); color: #fff; }
+    .tab:hover:not(.active) { background: #f0f0f5; color: #533483; }
+
+    /* === 内容区 === */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .card-title { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 16px; }
+
+    /* === 借阅记录表格 === */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #f5f5f8; color: #555; font-weight: 600;
+      padding: 10px 14px; text-align: left; border-bottom: 2px solid #eee;
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid #f0f0f5; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafd; }
+
+    /* 状态标签 */
+    .status-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-borrowing { background: #e3f2fd; color: #1565c0; }
+    .status-returned { background: #e8f5e9; color: #2e7d32; }
+    .status-overdue { background: #ffebee; color: #c62828; }
+    .status-pending { background: #fff3e0; color: #e65100; }
+    .status-cancelled { background: #f5f5f5; color: #888; }
+    .status-paid { background: #e8f5e9; color: #2e7d32; }
+    .status-unpaid { background: #ffebee; color: #c62828; }
+
+    /* 还书按钮 */
+    .btn-return {
+      padding: 6px 14px;
+      background: #533483; color: #fff;
+      border: none; border-radius: 6px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-return:hover { opacity: 0.88; }
+    .btn-pay {
+      padding: 6px 14px;
+      background: #e67e22; color: #fff;
+      border: none; border-radius: 6px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-pay:hover { opacity: 0.88; }
+
+    /* 逾期高亮 */
+    .overdue-row { background: #fff5f5; }
+    .overdue-row:hover td { background: #ffecec; }
+
+    /* 书评卡 */
+    .review-card {
+      border: 1px solid #e8e8ee;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    .review-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .review-book { font-size: 14px; font-weight: 600; color: #1a1a2e; }
+    .review-stars { color: #f4a100; font-size: 14px; margin-left: auto; }
+    .review-date { font-size: 12px; color: #aaa; }
+    .review-content { font-size: 13px; color: #555; line-height: 1.6; }
+
+    .empty { text-align: center; padding: 40px 20px; color: #aaa; }
+    .empty .icon { font-size: 40px; margin-bottom: 10px; }
+
+    .toast {
+      position: fixed; top: 20px; right: 20px;
+      padding: 12px 20px; border-radius: 8px;
+      color: #fff; font-size: 14px; z-index: 9999; display: none;
+    }
+    .toast.success { background: #4caf50; }
+    .toast.error { background: #e94560; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="brand">📚 图书馆借阅系统</div>
+  <a href="index.html">← 图书搜索</a>
+  <a href="#" onclick="logout()">退出登录</a>
+</nav>
+
+<div class="container">
+
+  <!-- 用户信息卡 -->
+  <div class="user-card" id="userCard">
+    <div class="user-avatar">👤</div>
+    <div class="user-info">
+      <h2 id="userName">加载中...</h2>
+      <p id="userEmail"></p>
+    </div>
+    <div class="user-stats">
+      <div class="stat-item">
+        <div class="num" id="statBorrowing">-</div>
+        <div class="label">借阅中</div>
+      </div>
+      <div class="stat-item">
+        <div class="num" id="statReservations">-</div>
+        <div class="label">预约中</div>
+      </div>
+      <div class="stat-item">
+        <div class="num" id="statFines">-</div>
+        <div class="label">未缴罚金</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab标签 -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('borrow')">📖 借阅记录</button>
+    <button class="tab" onclick="switchTab('reserve')">🔔 预约记录</button>
+    <button class="tab" onclick="switchTab('fines')">💰 罚金记录</button>
+    <button class="tab" onclick="switchTab('reviews')">📝 我的书评</button>
+  </div>
+
+  <!-- 借阅记录 -->
+  <div class="tab-content active" id="tab-borrow">
+    <div class="card">
+      <div class="card-title">我的借阅记录</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>书名</th>
+              <th>作者</th>
+              <th>借出日期</th>
+              <th>应还日期</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="borrowList">
+            <tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 预约记录 -->
+  <div class="tab-content" id="tab-reserve">
+    <div class="card">
+      <div class="card-title">我的预约记录</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>书名</th>
+              <th>作者</th>
+              <th>预约日期</th>
+              <th>过期时间</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="reserveList">
+            <tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 罚金记录 -->
+  <div class="tab-content" id="tab-fines">
+    <div class="card">
+      <div class="card-title">罚金记录</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>书名</th>
+              <th>罚金金额</th>
+              <th>逾期天数</th>
+              <th>原因</th>
+              <th>缴纳状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="finesList">
+            <tr><td colspan="6" style="text-align:center;color:#aaa;padding:30px;">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 我的书评 -->
+  <div class="tab-content" id="tab-reviews">
+    <div class="card">
+      <div class="card-title">我的书评</div>
+      <div id="myReviewsList">
+        <div style="text-align:center;color:#aaa;padding:30px;">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API_BASE = 'http://localhost:8080';
+
+  // 检查登录状态
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  if (!token || !user) {
+    showToast('请先登录', 'error');
+    setTimeout(() => window.location.href = 'login.html', 1000);
+  }
+
+  // 初始化用户信息显示
+  if (user) {
+    document.getElementById('userName').textContent = user.real_name || user.username;
+    document.getElementById('userEmail').textContent = user.email || '';
+  }
+
+  // 页面加载时获取所有数据
+  loadBorrowRecords();
+
+  // Tab切换
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', ['borrow','reserve','fines','reviews'][i] === name);
+    });
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+
+    // 懒加载：切到该Tab才加载数据
+    if (name === 'borrow') loadBorrowRecords();
+    if (name === 'reserve') loadReservations();
+    if (name === 'fines') loadFines();
+    if (name === 'reviews') loadMyReviews();
+  }
+
+  // ====== 借阅记录 ======
+  async function loadBorrowRecords() {
+    try {
+      const res = await fetch(`${API_BASE}/api/borrow/my`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      const records = data.list || data.data || [];
+
+      // 统计借阅中数量
+      const borrowingCount = records.filter(r => r.status === 'borrowing').length;
+      document.getElementById('statBorrowing').textContent = borrowingCount;
+
+      renderBorrowList(records);
+    } catch (err) {
+      document.querySelector('#borrowList').innerHTML =
+        '<tr><td colspan="6" style="text-align:center;color:#e94560;padding:30px;">加载失败</td></tr>';
+    }
+  }
+
+  function renderBorrowList(records) {
+    const tbody = document.getElementById('borrowList');
+    if (!records.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="icon">📭</div><p>暂无借阅记录</p></div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = records.map(r => {
+      const now = new Date();
+      const dueDate = new Date(r.due_date);
+      // 前端逾期判断：应还日期 < 今天 且 状态还是borrowing
+      const isOverdue = r.status === 'borrowing' && dueDate < now;
+
+      return `
+        <tr class="${isOverdue ? 'overdue-row' : ''}">
+          <td><a href="detail.html?id=${r.book_id}" style="color:#533483;text-decoration:none;font-weight:600;">${r.title || r.book_title}</a></td>
+          <td>${r.author || '-'}</td>
+          <td>${formatDate(r.borrow_date)}</td>
+          <td style="color:${isOverdue?'#c62828':'#333'};font-weight:${isOverdue?'700':'400'}">
+            ${formatDate(r.due_date)} ${isOverdue ? '⚠️ 已逾期' : ''}
+          </td>
+          <td>
+            <span class="status-badge status-${r.status}">
+              ${statusText(r.status)}
+            </span>
+          </td>
+          <td>
+            ${r.status === 'borrowing'
+              ? `<button class="btn-return" onclick="returnBook(${r.id})">还书</button>`
+              : '-'}
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // 还书操作
+  async function returnBook(recordId) {
+    if (!confirm('确认还书？')) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/borrow/${recordId}/return`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast('还书成功！', 'success');
+        loadBorrowRecords(); // 刷新借阅记录（available_copies +1）
+      } else {
+        showToast(data.message || '还书失败', 'error');
+      }
+    } catch (err) {
+      showToast('网络错误，请重试', 'error');
+    }
+  }
+
+  // ====== 预约记录 ======
+  async function loadReservations() {
+    try {
+      const res = await fetch(`${API_BASE}/api/reservations/my`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      const list = data.list || data.data || [];
+
+      const pendingCount = list.filter(r => r.status === 'pending').length;
+      document.getElementById('statReservations').textContent = pendingCount;
+
+      renderReservations(list);
+    } catch (err) {
+      document.getElementById('reserveList').innerHTML =
+        '<tr><td colspan="5" style="text-align:center;color:#e94560;padding:30px;">加载失败</td></tr>';
+    }
+  }
+
+  function renderReservations(list) {
+    const tbody = document.getElementById('reserveList');
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><div class="icon">🔔</div><p>暂无预约记录</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(r => `
+      <tr>
+        <td><a href="detail.html?id=${r.book_id}" style="color:#533483;text-decoration:none;font-weight:600;">${r.title || r.book_title}</a></td>
+        <td>${r.author || '-'}</td>
+        <td>${formatDate(r.reservation_date)}</td>
+        <td>${r.expire_date ? formatDate(r.expire_date) : '-'}</td>
+        <td><span class="status-badge status-${r.status}">${reserveStatusText(r.status)}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  // ====== 罚金记录 ======
+  async function loadFines() {
+    try {
+      const res = await fetch(`${API_BASE}/api/fines/my`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      const list = data.list || data.data || [];
+
+      // 统计未缴罚金总额
+      const unpaidTotal = list
+        .filter(f => f.status === 'unpaid')
+        .reduce((sum, f) => sum + parseFloat(f.amount || 0), 0);
+      document.getElementById('statFines').textContent = '¥' + unpaidTotal.toFixed(2);
+
+      renderFines(list);
+    } catch (err) {
+      document.getElementById('finesList').innerHTML =
+        '<tr><td colspan="6" style="text-align:center;color:#e94560;padding:30px;">加载失败</td></tr>';
+    }
+  }
+
+  function renderFines(list) {
+    const tbody = document.getElementById('finesList');
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty"><div class="icon">💰</div><p>暂无罚金记录</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(f => `
+      <tr>
+        <td>${f.title || f.book_title || '-'}</td>
+        <td style="color:${f.status==='unpaid'?'#c62828':'#333'};font-weight:600;">¥${parseFloat(f.amount||0).toFixed(2)}</td>
+        <td>${f.overdue_days || '-'} 天</td>
+        <td>${f.reason || '逾期还书'}</td>
+        <td><span class="status-badge status-${f.status}">${f.status==='paid'?'已缴纳':'未缴纳'}</span></td>
+        <td>
+          ${f.status === 'unpaid'
+            ? `<button class="btn-pay" onclick="payFine(${f.id})">缴纳</button>`
+            : '-'}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // 缴纳罚金（读者端缴纳操作）
+  async function payFine(fineId) {
+    if (!confirm('确认缴纳此罚金？')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/fines/${fineId}/pay`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('缴纳成功！', 'success');
+        loadFines();
+      } else {
+        showToast(data.message || '缴纳失败', 'error');
+      }
+    } catch (err) {
+      showToast('网络错误', 'error');
+    }
+  }
+
+  // ====== 我的书评 ======
+  async function loadMyReviews() {
+    try {
+      const res = await fetch(`${API_BASE}/api/reviews/my`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      const data = await res.json();
+      const list = data.list || data.data || [];
+      renderMyReviews(list);
+    } catch (err) {
+      document.getElementById('myReviewsList').innerHTML =
+        '<div style="text-align:center;color:#e94560;padding:30px;">加载失败</div>';
+    }
+  }
+
+  function renderMyReviews(list) {
+    const el = document.getElementById('myReviewsList');
+    if (!list.length) {
+      el.innerHTML = '<div class="empty"><div class="icon">📝</div><p>还没有发表过书评，去图书详情页评价吧！</p></div>';
+      return;
+    }
+    el.innerHTML = list.map(r => `
+      <div class="review-card">
+        <div class="review-header">
+          <div class="review-book">
+            <a href="detail.html?id=${r.book_id}" style="color:#533483;text-decoration:none;">${r.book_title || r.title}</a>
+          </div>
+          <div class="review-stars">${renderStars(r.rating)}</div>
+          <div class="review-date">${formatDate(r.created_at)}</div>
+        </div>
+        <div class="review-content">${r.content || '（未留书评内容）'}</div>
+      </div>
+    `).join('');
+  }
+
+  // ====== 工具函数 ======
+  function statusText(s) {
+    return { borrowing: '借阅中', returned: '已归还', overdue: '逾期中' }[s] || s;
+  }
+  function reserveStatusText(s) {
+    return { pending: '等待中', fulfilled: '已满足', cancelled: '已取消', expired: '已过期' }[s] || s;
+  }
+  function renderStars(rating) {
+    const r = Math.round(rating || 0);
+    return '★'.repeat(r) + '☆'.repeat(5 - r);
+  }
+  function formatDate(str) {
+    if (!str) return '-';
+    return new Date(str).toLocaleDateString('zh-CN');
+  }
+  function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = 'login.html';
+  }
+  function showToast(msg, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.className = 'toast ' + type;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  }
+</script>
+</body>
+</html>
