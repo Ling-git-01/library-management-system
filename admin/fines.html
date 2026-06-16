@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>罚金管理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>💰 罚金管理</h2>
+                <p>查看未缴纳罚金，管理员确认缴纳后调用 <span class="api-method">PUT</span><span class="api-tag">/api/admin/fines/:id/pay</span></p>
+            </div>
+
+            <!-- 统计概要 -->
+            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="stat-card danger">
+                    <div class="stat-label">未缴纳罚金</div>
+                    <div class="stat-value">¥45.0</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-label">未缴记录数</div>
+                    <div class="stat-value">3</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">已缴纳记录</div>
+                    <div class="stat-value">127</div>
+                </div>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <div class="tabs">
+                    <button class="tab active" onclick="filterFines('unpaid')">未缴纳</button>
+                    <button class="tab" onclick="filterFines('paid')">已缴纳</button>
+                    <button class="tab" onclick="filterFines('all')">全部</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="fineSearch" placeholder="搜索读者名..." oninput="filterFines()">
+                </div>
+            </div>
+
+            <!-- 罚金表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>读者</th>
+                        <th>关联借阅ID</th>
+                        <th>逾期天数</th>
+                        <th>罚金金额</th>
+                        <th>缴纳状态</th>
+                        <th>缴纳时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="finesTableBody">
+                    <tr data-status="unpaid">
+                        <td>5001</td>
+                        <td>李四</td>
+                        <td>1002</td>
+                        <td>5</td>
+                        <td>¥5.00</td>
+                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">未缴纳</span></td>
+                        <td>—</td>
+                        <td>
+                            <button class="btn btn-success btn-sm" onclick="payFine(5001)">确认缴纳</button>
+                        </td>
+                    </tr>
+                    <tr data-status="unpaid">
+                        <td>5002</td>
+                        <td>赵六</td>
+                        <td>1045</td>
+                        <td>10</td>
+                        <td>¥10.00</td>
+                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">未缴纳</span></td>
+                        <td>—</td>
+                        <td>
+                            <button class="btn btn-success btn-sm" onclick="payFine(5002)">确认缴纳</button>
+                        </td>
+                    </tr>
+                    <tr data-status="unpaid">
+                        <td>5003</td>
+                        <td>孙七</td>
+                        <td>1108</td>
+                        <td>30</td>
+                        <td>¥30.00</td>
+                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">未缴纳</span></td>
+                        <td>—</td>
+                        <td>
+                            <button class="btn btn-success btn-sm" onclick="payFine(5003)">确认缴纳</button>
+                        </td>
+                    </tr>
+                    <tr data-status="paid">
+                        <td>5000</td>
+                        <td>张三</td>
+                        <td>0998</td>
+                        <td>2</td>
+                        <td>¥2.00</td>
+                        <td><span class="status-badge status-active">已缴纳</span></td>
+                        <td>2026-06-10</td>
+                        <td>
+                            <span style="color:#7f8c8d;">—</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- 常见错误排查 -->
+            <div class="alert alert-warning" style="margin-top:24px;">
+                <span class="alert-icon">⚠️</span>
+                <div class="alert-content">
+                    <div class="alert-title">常见错误 & 排查</div>
+                    <ul class="feature-list">
+                        <li><strong>管理后台登录后调接口报403</strong> — JWT Token里role不是"admin"。检查数据库admin用户的role字段。</li>
+                        <li><strong>图书管理编辑按钮点了没反应</strong> — 编辑弹窗没填充原有数据。先调 <span class="api-method">GET</span><span class="api-tag">/api/books/:id</span> 取详情再填充表单。</li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 罚金管理 ============
+        let allFines = [];
+
+        async function loadFines() {
+            try {
+                const res = await fetch('/api/admin/fines', {
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const data = await res.json();
+                allFines = data;
+                renderFines(data);
+            } catch (err) {
+                console.error('获取罚金列表失败:', err);
+            }
+        }
+
+        function renderFines(fines) {
+            const tbody = document.getElementById('finesTableBody');
+            tbody.innerHTML = fines.map(f => `
+                <tr data-status="${f.paid ? 'paid' : 'unpaid'}">
+                    <td>${f.id}</td>
+                    <td>${f.readerName}</td>
+                    <td>${f.borrowId}</td>
+                    <td>${f.overdueDays} 天</td>
+                    <td>¥${f.amount.toFixed(2)}</td>
+                    <td><span class="status-badge ${f.paid ? 'status-active' : ''}" style="${f.paid ? '' : 'background:#f8d7da;color:#721c24;'}">${f.paid ? '已缴纳' : '未缴纳'}</span></td>
+                    <td>${f.paidAt || '—'}</td>
+                    <td>
+                        ${!f.paid
+                            ? `<button class="btn btn-success btn-sm" onclick="payFine(${f.id})">确认缴纳</button>`
+                            : '<span style="color:#7f8c8d;">—</span>'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // --- 确认缴纳 ---
+        async function payFine(id) {
+            if (!confirm('确认该读者已缴纳罚金？此操作将调用 PUT /api/admin/fines/:id/pay')) return;
+            try {
+                const res = await fetch(`/api/admin/fines/${id}/pay`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                if (res.ok) {
+                    loadFines();
+                } else {
+                    alert('确认缴纳失败');
+                }
+            } catch (err) {
+                alert('确认缴纳失败: ' + err.message);
+            }
+        }
+
+        // --- 标签页筛选 ---
+        function filterFines(status) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (status !== 'all') {
+                document.querySelectorAll('.tab').forEach(t => {
+                    if (t.textContent.includes(status === 'unpaid' ? '未缴纳' : '已缴纳')) t.classList.add('active');
+                });
+            } else {
+                document.querySelectorAll('.tab')[2].classList.add('active');
+            }
+
+            const keyword = document.getElementById('fineSearch').value.toLowerCase();
+            document.querySelectorAll('#finesTableBody tr').forEach(row => {
+                const matchStatus = !status || status === 'all' || row.dataset.status === status;
+                const matchKeyword = !keyword || row.textContent.toLowerCase().includes(keyword);
+                row.style.display = matchStatus && matchKeyword ? '' : 'none';
+            });
+
+            if (status === undefined) return;
+        }
+
+        document.getElementById('fineSearch').addEventListener('input', () => filterFines('unpaid'));
+
+        loadFines();
+    </script>
+</body>
+</html>

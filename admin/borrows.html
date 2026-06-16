@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>借阅处理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>🔄 借阅处理</h2>
+                <p>查看所有借阅记录，管理员可手动帮读者还书</p>
+            </div>
+
+            <!-- 统计概要 -->
+            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="stat-card warning">
+                    <div class="stat-label">借阅中</div>
+                    <div class="stat-value">342</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">已归还</div>
+                    <div class="stat-value">1,890</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-label">已逾期</div>
+                    <div class="stat-value">18</div>
+                </div>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <div class="tabs">
+                    <button class="tab active" onclick="filterBorrows('all')">全部</button>
+                    <button class="tab" onclick="filterBorrows('borrowing')">借阅中</button>
+                    <button class="tab" onclick="filterBorrows('overdue')">已逾期</button>
+                    <button class="tab" onclick="filterBorrows('returned')">已归还</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="borrowSearch" placeholder="搜索读者/书名..." oninput="filterBorrows()">
+                </div>
+            </div>
+
+            <!-- 借阅表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>读者</th>
+                        <th>书名</th>
+                        <th>借阅日期</th>
+                        <th>应还日期</th>
+                        <th>实际归还</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="borrowsTableBody">
+                    <tr>
+                        <td>1001</td>
+                        <td>张三</td>
+                        <td>JavaScript高级程序设计</td>
+                        <td>2026-06-01</td>
+                        <td>2026-06-15</td>
+                        <td>—</td>
+                        <td><span class="status-badge" style="background:#fff3cd;color:#856404;">借阅中</span></td>
+                        <td>
+                            <button class="btn btn-success btn-sm" onclick="returnBook(1001)">手动还书</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>1002</td>
+                        <td>李四</td>
+                        <td>深入浅出Node.js</td>
+                        <td>2026-05-28</td>
+                        <td>2026-06-11</td>
+                        <td>—</td>
+                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">已逾期</span></td>
+                        <td>
+                            <button class="btn btn-success btn-sm" onclick="returnBook(1002)">手动还书</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>1003</td>
+                        <td>王五</td>
+                        <td>三体</td>
+                        <td>2026-05-15</td>
+                        <td>2026-05-29</td>
+                        <td>2026-05-29</td>
+                        <td><span class="status-badge status-active">已归还</span></td>
+                        <td>
+                            <span style="color:#7f8c8d;">—</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 借阅处理 ============
+        let allBorrows = [];
+
+        async function loadBorrows() {
+            try {
+                const res = await fetch('/api/admin/borrows', {
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const data = await res.json();
+                allBorrows = data;
+                renderBorrows(data);
+            } catch (err) {
+                console.error('获取借阅记录失败:', err);
+            }
+        }
+
+        function renderBorrows(borrows) {
+            const tbody = document.getElementById('borrowsTableBody');
+            tbody.innerHTML = borrows.map(b => {
+                let statusClass, statusText;
+                if (b.returnedAt) {
+                    statusClass = 'status-active';
+                    statusText = '已归还';
+                } else if (new Date(b.dueDate) < new Date()) {
+                    statusClass = '';
+                    statusText = '已逾期';
+                } else {
+                    statusClass = '';
+                    statusText = '借阅中';
+                }
+                return `
+                    <tr data-status="${b.returnedAt ? 'returned' : (new Date(b.dueDate) < new Date() ? 'overdue' : 'borrowing')}">
+                        <td>${b.id}</td>
+                        <td>${b.readerName}</td>
+                        <td>${b.bookTitle}</td>
+                        <td>${b.borrowDate}</td>
+                        <td>${b.dueDate}</td>
+                        <td>${b.returnedAt || '—'}</td>
+                        <td><span class="status-badge" style="${statusClass ? '' : (statusText === '已逾期' ? 'background:#f8d7da;color:#721c24;' : 'background:#fff3cd;color:#856404;')}">${statusText}</span></td>
+                        <td>
+                            ${!b.returnedAt
+                                ? `<button class="btn btn-success btn-sm" onclick="returnBook(${b.id})">手动还书</button>`
+                                : '<span style="color:#7f8c8d;">—</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // --- 手动还书 ---
+        async function returnBook(id) {
+            if (!confirm('确定帮读者归还该书吗？（由管理员手动操作）')) return;
+            try {
+                const res = await fetch(`/api/admin/borrows/${id}/return`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                if (res.ok) {
+                    loadBorrows();
+                } else {
+                    alert('还书操作失败');
+                }
+            } catch (err) {
+                alert('还书操作失败: ' + err.message);
+            }
+        }
+
+        // --- 标签页筛选 ---
+        function filterBorrows(status) {
+            // 设置active tab
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (status !== undefined && status !== 'all') {
+                document.querySelectorAll('.tab').forEach(t => {
+                    if (t.textContent.includes(
+                        status === 'borrowing' ? '借阅中' :
+                        status === 'overdue' ? '已逾期' : '已归还'
+                    )) t.classList.add('active');
+                });
+            } else {
+                document.querySelector('.tab').classList.add('active');
+            }
+
+            // 根据关键字和状态筛选
+            const keyword = document.getElementById('borrowSearch').value.toLowerCase();
+            document.querySelectorAll('#borrowsTableBody tr').forEach(row => {
+                const matchStatus = !status || status === 'all' || row.dataset.status === status;
+                const matchKeyword = !keyword || row.textContent.toLowerCase().includes(keyword);
+                row.style.display = matchStatus && matchKeyword ? '' : 'none';
+            });
+
+            // 如果传的是关键字搜索事件
+            if (status === undefined) return;
+        }
+
+        // 覆盖默认filter事件
+        document.getElementById('borrowSearch').addEventListener('input', () => filterBorrows('all'));
+
+        loadBorrows();
+    </script>
+</body>
+</html>

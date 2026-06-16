@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仪表盘 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>📊 管理后台仪表盘</h2>
+                <p>欢迎回来，管理员 | 使用 <code>admin</code> 账号登录后，调用 <span class="api-method">GET</span><span class="api-tag">/api/admin/dashboard</span> 验证角色是 <code>admin</code></p>
+            </div>
+
+            <!-- 统计卡片 -->
+            <div class="stats-grid">
+                <div class="stat-card primary">
+                    <div class="stat-label">👥 总读者数</div>
+                    <div class="stat-value">1,234</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">📚 总图书数</div>
+                    <div class="stat-value">5,678</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-label">📖 借阅中数量</div>
+                    <div class="stat-value">342</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-label">⏰ 逾期数量</div>
+                    <div class="stat-value">18</div>
+                </div>
+            </div>
+
+            <!-- 分类统计 + 趋势图 -->
+            <div class="charts-grid">
+                <div class="chart-box">
+                    <h3>📂 各分类图书统计</h3>
+                    <canvas id="categoryChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <h3>📈 近7天借阅趋势图</h3>
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 读取仪表盘数据 ============
+        async function loadDashboard() {
+            try {
+                const res = await fetch('/api/admin/dashboard', {
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                if (!res.ok) throw new Error('请求失败');
+                const data = await res.json();
+                renderStats(data);
+                renderCharts(data);
+            } catch (err) {
+                console.error('获取仪表盘数据失败:', err);
+                // 展示模拟数据
+                renderStats({
+                    totalReaders: 1234,
+                    totalBooks: 5678,
+                    borrowingCount: 342,
+                    overdueCount: 18
+                });
+                renderCharts({
+                    categoryStats: [
+                        { name: '计算机', count: 1200 },
+                        { name: '文学', count: 980 },
+                        { name: '历史', count: 750 },
+                        { name: '科学', count: 1100 },
+                        { name: '艺术', count: 650 },
+                        { name: '其他', count: 998 }
+                    ],
+                    trendData: [45, 52, 38, 60, 55, 48, 42]
+                });
+            }
+        }
+
+        function renderStats(data) {
+            document.querySelector('.stat-card.primary .stat-value').textContent = data.totalReaders;
+            document.querySelector('.stat-card.success .stat-value').textContent = data.totalBooks;
+            document.querySelector('.stat-card.warning .stat-value').textContent = data.borrowingCount;
+            document.querySelector('.stat-card.danger .stat-value').textContent = data.overdueCount;
+        }
+
+        function renderCharts(data) {
+            // 分类统计饼图
+            const catCtx = document.getElementById('categoryChart').getContext('2d');
+            new Chart(catCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.categoryStats.map(c => c.name),
+                    datasets: [{
+                        data: data.categoryStats.map(c => c.count),
+                        backgroundColor: ['#3498db','#2ecc71','#e74c3c','#f39c12','#9b59b6','#1abc9c']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // 7天趋势折线图
+            const trendCtx = document.getElementById('trendChart').getContext('2d');
+            const days = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                days.push((d.getMonth() + 1) + '/' + d.getDate());
+            }
+            new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: days,
+                    datasets: [{
+                        label: '借阅量',
+                        data: data.trendData,
+                        borderColor: '#e67e22',
+                        backgroundColor: 'rgba(230,126,34,0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>
