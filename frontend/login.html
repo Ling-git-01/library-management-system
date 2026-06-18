@@ -1,3 +1,4 @@
+/* 读者登录页 */
 /* ===端口修改94 === */
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -131,7 +132,7 @@
           showToast(data.message || '用户名或密码错误', 'error');
         }
       } catch (err) {
-        showToast('网络错误，请检查后端服务是否启动（端口3000）', 'error');
+        showToast('网络错误', 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = '登 录';
