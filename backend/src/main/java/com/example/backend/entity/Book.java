@@ -1,12 +1,16 @@
 package com.example.backend.entity;
 
 import lombok.Data;
+import org.hibernate.annotations.DynamicInsert;
+import org.hibernate.annotations.DynamicUpdate;
 
 import javax.persistence.*;
 
 @Data
 @Entity
 @Table(name = "books")
+@DynamicInsert
+@DynamicUpdate
 public class Book  {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
