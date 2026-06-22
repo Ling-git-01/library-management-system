@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public interface BorrowRecordRepository extends JpaRepository<BorrowRecord,Integer> {
@@ -18,4 +19,8 @@ public interface BorrowRecordRepository extends JpaRepository<BorrowRecord,Integ
     // 查询逾期未还记录
     @Query("SELECT br FROM BorrowRecord br WHERE br.dueDate < NOW() AND br.status = 'borrowing'")
     List<BorrowRecord> findOverdueRecords();
+    // 统计每本图书总借阅次数，降序排行
+    @Query("SELECT new map(br.book.id as bookId, br.book.title as title, COUNT(br.id) as borrowCount) " +
+            "FROM BorrowRecord br GROUP BY br.book.id, br.book.title ORDER BY COUNT(br.id) DESC")
+    List<Map<String,Object>> getBookBorrowRank();
 }

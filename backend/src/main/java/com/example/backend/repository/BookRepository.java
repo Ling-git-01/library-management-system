@@ -18,4 +18,14 @@ public interface BookRepository extends JpaRepository<Book, Integer> {
 
     // 查询有可借库存的图书
     List<Book> findByAvailableCopiesGreaterThan(Integer num);
+
+    // 根据用户借阅过的图书分类，推荐同分类其他未借图书
+    @Query(value = "SELECT DISTINCT b FROM Book b " +
+            "WHERE b.categoryId IN (" +
+            " SELECT DISTINCT br.book.categoryId FROM BorrowRecord br " +
+            " WHERE br.userId = :userId ) " +
+            "AND b.id NOT IN (" +
+            " SELECT br.bookId FROM BorrowRecord br WHERE br.userId = :userId ) " +
+            "AND b.availableCopies > 0")
+    List<Book> getRecommendBookByUserBorrow(@Param("userId") Integer userId);
 }

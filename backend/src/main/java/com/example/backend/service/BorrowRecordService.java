@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BorrowRecordService {
@@ -91,5 +92,10 @@ public class BorrowRecordService {
 
     public List<BorrowRecord> getUserBorrow(Integer userId) {
         return borrowRepo.findByUserId(userId);
+    }
+
+    // 获取图书借阅排行榜
+    public List<Map<String,Object>> getBorrowRank() {
+        return borrowRepo.getBookBorrowRank();
     }
 }

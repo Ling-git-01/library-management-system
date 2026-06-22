@@ -46,4 +46,10 @@ public class BorrowController {
         List<BorrowRecord> list = borrowService.getUserBorrow(userId);
         return ResponseEntity.ok(Map.of("success",true,"count",list.size(),"data",list));
     }
+    // 借阅排行榜 GET /api/borrow/rank
+    @GetMapping("/rank")
+    public ResponseEntity<?> borrowRank() {
+        List<Map<String,Object>> rankList = borrowService.getBorrowRank();
+        return ResponseEntity.ok(Map.of("success",true,"data",rankList));
+    }
 }

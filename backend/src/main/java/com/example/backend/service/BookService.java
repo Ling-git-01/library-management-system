@@ -34,4 +34,9 @@ public class BookService {
     public List<Book> getAvailable() {
         return bookRepo.findByAvailableCopiesGreaterThan(0);
     }
+
+    // 个性化图书推荐
+    public List<Book> getRecommendBook(Integer userId) {
+        return bookRepo.getRecommendBookByUserBorrow(userId);
+    }
 }
