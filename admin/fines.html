@@ -26,6 +26,9 @@
                 <li class="nav-item">
                     <a href="borrows.html">🔄 借阅处理</a>
                 </li>
+                <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
                 <li class="nav-item active">
                     <a href="fines.html">💰 罚金管理</a>
                 </li>
@@ -63,7 +66,7 @@
                     <button class="tab" onclick="filterFines('all')">全部</button>
                 </div>
                 <div class="search-box">
-                    <input type="text" id="fineSearch" placeholder="搜索读者名..." oninput="filterFines()">
+                    <input type="text" id="fineSearch" placeholder="搜索读者名...">
                 </div>
             </div>
 
@@ -82,56 +85,11 @@
                     </tr>
                 </thead>
                 <tbody id="finesTableBody">
-                    <tr data-status="unpaid">
-                        <td>5001</td>
-                        <td>李四</td>
-                        <td>1002</td>
-                        <td>5</td>
-                        <td>¥5.00</td>
-                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">未缴纳</span></td>
-                        <td>—</td>
-                        <td>
-                            <button class="btn btn-success btn-sm" onclick="payFine(5001)">确认缴纳</button>
-                        </td>
-                    </tr>
-                    <tr data-status="unpaid">
-                        <td>5002</td>
-                        <td>赵六</td>
-                        <td>1045</td>
-                        <td>10</td>
-                        <td>¥10.00</td>
-                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">未缴纳</span></td>
-                        <td>—</td>
-                        <td>
-                            <button class="btn btn-success btn-sm" onclick="payFine(5002)">确认缴纳</button>
-                        </td>
-                    </tr>
-                    <tr data-status="unpaid">
-                        <td>5003</td>
-                        <td>孙七</td>
-                        <td>1108</td>
-                        <td>30</td>
-                        <td>¥30.00</td>
-                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">未缴纳</span></td>
-                        <td>—</td>
-                        <td>
-                            <button class="btn btn-success btn-sm" onclick="payFine(5003)">确认缴纳</button>
-                        </td>
-                    </tr>
-                    <tr data-status="paid">
-                        <td>5000</td>
-                        <td>张三</td>
-                        <td>0998</td>
-                        <td>2</td>
-                        <td>¥2.00</td>
-                        <td><span class="status-badge status-active">已缴纳</span></td>
-                        <td>2026-06-10</td>
-                        <td>
-                            <span style="color:#7f8c8d;">—</span>
-                        </td>
-                    </tr>
                 </tbody>
             </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
 
             <!-- 常见错误排查 -->
             <div class="alert alert-warning" style="margin-top:24px;">
@@ -162,19 +120,48 @@
     <script src="common.js"></script>
     <script>
         // ============ 罚金管理 ============
-        let allFines = [];
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentStatus = 'unpaid';
 
-        async function loadFines() {
+        async function loadFines(page = 1, status = 'unpaid') {
+            currentPage = page;
+            currentStatus = status;
             try {
-                const res = await fetch('/api/admin/fines', {
+                let url = `/api/admin/fines?page=${page}&pageSize=${pageSize}`;
+                if (status && status !== 'all') url += `&status=${status}`;
+                const res = await fetch(url, {
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
-                const data = await res.json();
-                allFines = data;
-                renderFines(data);
+                const result = await res.json();
+                renderFines(result.data.list);
+                renderPagination(result.data);
             } catch (err) {
                 console.error('获取罚金列表失败:', err);
             }
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            loadFines(page, currentStatus);
         }
 
         function renderFines(fines) {
@@ -182,12 +169,12 @@
             tbody.innerHTML = fines.map(f => `
                 <tr data-status="${f.paid ? 'paid' : 'unpaid'}">
                     <td>${f.id}</td>
-                    <td>${f.readerName}</td>
-                    <td>${f.borrowId}</td>
-                    <td>${f.overdueDays} 天</td>
+                    <td>${f.reader_name}</td>
+                    <td>${f.borrow_id}</td>
+                    <td>${f.overdue_days} 天</td>
                     <td>¥${f.amount.toFixed(2)}</td>
                     <td><span class="status-badge ${f.paid ? 'status-active' : ''}" style="${f.paid ? '' : 'background:#f8d7da;color:#721c24;'}">${f.paid ? '已缴纳' : '未缴纳'}</span></td>
-                    <td>${f.paidAt || '—'}</td>
+                    <td>${f.paid_at || '—'}</td>
                     <td>
                         ${!f.paid
                             ? `<button class="btn btn-success btn-sm" onclick="payFine(${f.id})">确认缴纳</button>`
@@ -206,7 +193,7 @@
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
                 if (res.ok) {
-                    loadFines();
+                    loadFines(currentPage, currentStatus);
                 } else {
                     alert('确认缴纳失败');
                 }
@@ -217,26 +204,26 @@
 
         // --- 标签页筛选 ---
         function filterFines(status) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            if (status !== 'all') {
-                document.querySelectorAll('.tab').forEach(t => {
-                    if (t.textContent.includes(status === 'unpaid' ? '未缴纳' : '已缴纳')) t.classList.add('active');
-                });
-            } else {
-                document.querySelectorAll('.tab')[2].classList.add('active');
+            if (typeof status === 'string') {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                if (status !== 'all') {
+                    document.querySelectorAll('.tab').forEach(t => {
+                        if (t.textContent.includes(status === 'unpaid' ? '未缴纳' : '已缴纳')) t.classList.add('active');
+                    });
+                } else {
+                    document.querySelectorAll('.tab')[2].classList.add('active');
+                }
+                loadFines(1, status);
+                return;
             }
-
+            // 搜索输入（无参数）- 客户端过滤当前页
             const keyword = document.getElementById('fineSearch').value.toLowerCase();
             document.querySelectorAll('#finesTableBody tr').forEach(row => {
-                const matchStatus = !status || status === 'all' || row.dataset.status === status;
-                const matchKeyword = !keyword || row.textContent.toLowerCase().includes(keyword);
-                row.style.display = matchStatus && matchKeyword ? '' : 'none';
+                row.style.display = !keyword || row.textContent.toLowerCase().includes(keyword) ? '' : 'none';
             });
-
-            if (status === undefined) return;
         }
 
-        document.getElementById('fineSearch').addEventListener('input', () => filterFines('unpaid'));
+        document.getElementById('fineSearch').addEventListener('input', () => filterFines());
 
         loadFines();
     </script>

@@ -28,6 +28,9 @@
                     <a href="borrows.html">🔄 借阅处理</a>
                 </li>
                 <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
                     <a href="fines.html">💰 罚金管理</a>
                 </li>
             </ul>
@@ -44,19 +47,19 @@
             <div class="stats-grid">
                 <div class="stat-card primary">
                     <div class="stat-label">👥 总读者数</div>
-                    <div class="stat-value">1,234</div>
+                    <div class="stat-value">—</div>
                 </div>
                 <div class="stat-card success">
                     <div class="stat-label">📚 总图书数</div>
-                    <div class="stat-value">5,678</div>
+                    <div class="stat-value">—</div>
                 </div>
                 <div class="stat-card warning">
                     <div class="stat-label">📖 借阅中数量</div>
-                    <div class="stat-value">342</div>
+                    <div class="stat-value">—</div>
                 </div>
                 <div class="stat-card danger">
                     <div class="stat-label">⏰ 逾期数量</div>
-                    <div class="stat-value">18</div>
+                    <div class="stat-value">—</div>
                 </div>
             </div>
 
@@ -95,30 +98,13 @@
                 const res = await fetch('/api/admin/dashboard', {
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
+                const result = await res.json();
                 if (!res.ok) throw new Error('请求失败');
-                const data = await res.json();
-                renderStats(data);
-                renderCharts(data);
+                renderStats(result.data);
+                renderCharts(result.data);
             } catch (err) {
                 console.error('获取仪表盘数据失败:', err);
-                // 展示模拟数据
-                renderStats({
-                    totalReaders: 1234,
-                    totalBooks: 5678,
-                    borrowingCount: 342,
-                    overdueCount: 18
-                });
-                renderCharts({
-                    categoryStats: [
-                        { name: '计算机', count: 1200 },
-                        { name: '文学', count: 980 },
-                        { name: '历史', count: 750 },
-                        { name: '科学', count: 1100 },
-                        { name: '艺术', count: 650 },
-                        { name: '其他', count: 998 }
-                    ],
-                    trendData: [45, 52, 38, 60, 55, 48, 42]
-                });
+                alert('获取仪表盘数据失败，请检查后端服务是否正常运行');
             }
         }
 

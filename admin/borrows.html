@@ -27,6 +27,9 @@
                     <a href="borrows.html">🔄 借阅处理</a>
                 </li>
                 <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
                     <a href="fines.html">💰 罚金管理</a>
                 </li>
             </ul>
@@ -64,7 +67,7 @@
                     <button class="tab" onclick="filterBorrows('returned')">已归还</button>
                 </div>
                 <div class="search-box">
-                    <input type="text" id="borrowSearch" placeholder="搜索读者/书名..." oninput="filterBorrows()">
+                    <input type="text" id="borrowSearch" placeholder="搜索读者/书名...">
                 </div>
             </div>
 
@@ -83,44 +86,11 @@
                     </tr>
                 </thead>
                 <tbody id="borrowsTableBody">
-                    <tr>
-                        <td>1001</td>
-                        <td>张三</td>
-                        <td>JavaScript高级程序设计</td>
-                        <td>2026-06-01</td>
-                        <td>2026-06-15</td>
-                        <td>—</td>
-                        <td><span class="status-badge" style="background:#fff3cd;color:#856404;">借阅中</span></td>
-                        <td>
-                            <button class="btn btn-success btn-sm" onclick="returnBook(1001)">手动还书</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>1002</td>
-                        <td>李四</td>
-                        <td>深入浅出Node.js</td>
-                        <td>2026-05-28</td>
-                        <td>2026-06-11</td>
-                        <td>—</td>
-                        <td><span class="status-badge" style="background:#f8d7da;color:#721c24;">已逾期</span></td>
-                        <td>
-                            <button class="btn btn-success btn-sm" onclick="returnBook(1002)">手动还书</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>1003</td>
-                        <td>王五</td>
-                        <td>三体</td>
-                        <td>2026-05-15</td>
-                        <td>2026-05-29</td>
-                        <td>2026-05-29</td>
-                        <td><span class="status-badge status-active">已归还</span></td>
-                        <td>
-                            <span style="color:#7f8c8d;">—</span>
-                        </td>
-                    </tr>
                 </tbody>
             </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
         </main>
     </div>
 
@@ -139,29 +109,58 @@
     <script src="common.js"></script>
     <script>
         // ============ 借阅处理 ============
-        let allBorrows = [];
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentStatus = 'all';
 
-        async function loadBorrows() {
+        async function loadBorrows(page = 1, status = 'all') {
+            currentPage = page;
+            currentStatus = status;
             try {
-                const res = await fetch('/api/admin/borrows', {
+                let url = `/api/admin/borrows?page=${page}&pageSize=${pageSize}`;
+                if (status && status !== 'all') url += `&status=${status}`;
+                const res = await fetch(url, {
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
-                const data = await res.json();
-                allBorrows = data;
-                renderBorrows(data);
+                const result = await res.json();
+                renderBorrows(result.data.list);
+                renderPagination(result.data);
             } catch (err) {
                 console.error('获取借阅记录失败:', err);
             }
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            loadBorrows(page, currentStatus);
         }
 
         function renderBorrows(borrows) {
             const tbody = document.getElementById('borrowsTableBody');
             tbody.innerHTML = borrows.map(b => {
                 let statusClass, statusText;
-                if (b.returnedAt) {
+                if (b.returned_at) {
                     statusClass = 'status-active';
                     statusText = '已归还';
-                } else if (new Date(b.dueDate) < new Date()) {
+                } else if (new Date(b.due_date) < new Date()) {
                     statusClass = '';
                     statusText = '已逾期';
                 } else {
@@ -169,16 +168,16 @@
                     statusText = '借阅中';
                 }
                 return `
-                    <tr data-status="${b.returnedAt ? 'returned' : (new Date(b.dueDate) < new Date() ? 'overdue' : 'borrowing')}">
+                    <tr data-status="${b.returned_at ? 'returned' : (new Date(b.due_date) < new Date() ? 'overdue' : 'borrowing')}">
                         <td>${b.id}</td>
-                        <td>${b.readerName}</td>
-                        <td>${b.bookTitle}</td>
-                        <td>${b.borrowDate}</td>
-                        <td>${b.dueDate}</td>
-                        <td>${b.returnedAt || '—'}</td>
+                        <td>${b.reader_name}</td>
+                        <td>${b.book_title}</td>
+                        <td>${b.borrow_date}</td>
+                        <td>${b.due_date}</td>
+                        <td>${b.returned_at || '—'}</td>
                         <td><span class="status-badge" style="${statusClass ? '' : (statusText === '已逾期' ? 'background:#f8d7da;color:#721c24;' : 'background:#fff3cd;color:#856404;')}">${statusText}</span></td>
                         <td>
-                            ${!b.returnedAt
+                            ${!b.returned_at
                                 ? `<button class="btn btn-success btn-sm" onclick="returnBook(${b.id})">手动还书</button>`
                                 : '<span style="color:#7f8c8d;">—</span>'}
                         </td>
@@ -196,7 +195,7 @@
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
                 if (res.ok) {
-                    loadBorrows();
+                    loadBorrows(currentPage, currentStatus);
                 } else {
                     alert('还书操作失败');
                 }
@@ -207,33 +206,29 @@
 
         // --- 标签页筛选 ---
         function filterBorrows(status) {
-            // 设置active tab
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            if (status !== undefined && status !== 'all') {
-                document.querySelectorAll('.tab').forEach(t => {
-                    if (t.textContent.includes(
-                        status === 'borrowing' ? '借阅中' :
-                        status === 'overdue' ? '已逾期' : '已归还'
-                    )) t.classList.add('active');
-                });
-            } else {
-                document.querySelector('.tab').classList.add('active');
+            if (typeof status === 'string') {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                if (status !== 'all') {
+                    document.querySelectorAll('.tab').forEach(t => {
+                        if (t.textContent.includes(
+                            status === 'borrowing' ? '借阅中' :
+                            status === 'overdue' ? '已逾期' : '已归还'
+                        )) t.classList.add('active');
+                    });
+                } else {
+                    document.querySelector('.tab').classList.add('active');
+                }
+                loadBorrows(1, status);
+                return;
             }
-
-            // 根据关键字和状态筛选
+            // 搜索输入（无参数）- 客户端过滤当前页
             const keyword = document.getElementById('borrowSearch').value.toLowerCase();
             document.querySelectorAll('#borrowsTableBody tr').forEach(row => {
-                const matchStatus = !status || status === 'all' || row.dataset.status === status;
-                const matchKeyword = !keyword || row.textContent.toLowerCase().includes(keyword);
-                row.style.display = matchStatus && matchKeyword ? '' : 'none';
+                row.style.display = !keyword || row.textContent.toLowerCase().includes(keyword) ? '' : 'none';
             });
-
-            // 如果传的是关键字搜索事件
-            if (status === undefined) return;
         }
 
-        // 覆盖默认filter事件
-        document.getElementById('borrowSearch').addEventListener('input', () => filterBorrows('all'));
+        document.getElementById('borrowSearch').addEventListener('input', () => filterBorrows());
 
         loadBorrows();
     </script>

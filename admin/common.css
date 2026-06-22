@@ -587,3 +587,36 @@ code {
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* ---- 分页 ---- */
+.pagination-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.pagination-info {
+    font-size: 13px;
+    color: #7f8c8d;
+}
+
+.pagination-btns {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.pagination-btns .btn {
+    min-width: 32px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.pagination-btns .btn-primary {
+    cursor: default;
+}
+

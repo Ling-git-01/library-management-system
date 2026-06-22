@@ -27,6 +27,9 @@
                     <a href="borrows.html">🔄 借阅处理</a>
                 </li>
                 <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
                     <a href="fines.html">💰 罚金管理</a>
                 </li>
             </ul>
@@ -60,50 +63,11 @@
                     </tr>
                 </thead>
                 <tbody id="readersTableBody">
-                    <tr>
-                        <td>001</td>
-                        <td>张三</td>
-                        <td>zhangsan@example.com</td>
-                        <td>
-                            <span class="editable-number" onclick="editMaxBorrow(1, 5)">5</span>
-                        </td>
-                        <td>2</td>
-                        <td><span class="status-badge status-active">启用</span></td>
-                        <td>
-                            <button class="btn btn-warning btn-sm" onclick="toggleReader(1, false)">禁用</button>
-                            <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(1, 5)">修改借阅上限</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>002</td>
-                        <td>李四</td>
-                        <td>lisi@example.com</td>
-                        <td>
-                            <span class="editable-number" onclick="editMaxBorrow(2, 3)">3</span>
-                        </td>
-                        <td>3</td>
-                        <td><span class="status-badge status-inactive">禁用</span></td>
-                        <td>
-                            <button class="btn btn-success btn-sm" onclick="toggleReader(2, true)">启用</button>
-                            <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(2, 3)">修改借阅上限</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>003</td>
-                        <td>王五</td>
-                        <td>wangwu@example.com</td>
-                        <td>
-                            <span class="editable-number" onclick="editMaxBorrow(3, 5)">5</span>
-                        </td>
-                        <td>1</td>
-                        <td><span class="status-badge status-active">启用</span></td>
-                        <td>
-                            <button class="btn btn-warning btn-sm" onclick="toggleReader(3, false)">禁用</button>
-                            <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(3, 5)">修改借阅上限</button>
-                        </td>
-                    </tr>
                 </tbody>
             </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
         </main>
     </div>
 
@@ -122,16 +86,48 @@
     <script src="common.js"></script>
     <script>
         // ============ 读者管理 ============
-        async function loadReaders() {
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentKeyword = '';
+
+        async function loadReaders(page = 1, keyword = '') {
+            currentPage = page;
+            currentKeyword = keyword;
             try {
-                const res = await fetch('/api/admin/readers', {
+                let url = `/api/admin/readers?page=${page}&pageSize=${pageSize}`;
+                if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+                const res = await fetch(url, {
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
-                const data = await res.json();
-                renderReaders(data);
+                const result = await res.json();
+                renderReaders(result.data.list);
+                renderPagination(result.data);
             } catch (err) {
                 console.error('获取读者列表失败:', err);
             }
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            loadReaders(page, currentKeyword);
         }
 
         function renderReaders(readers) {
@@ -142,15 +138,15 @@
                     <td>${r.username}</td>
                     <td>${r.email}</td>
                     <td>
-                        <span class="editable-number" onclick="editMaxBorrow(${r.id}, ${r.maxBorrowCount})">${r.maxBorrowCount}</span>
+                        <span class="editable-number" onclick="editMaxBorrow(${r.id}, ${r.max_borrow_count})">${r.max_borrow_count}</span>
                     </td>
-                    <td>${r.currentBorrowCount}</td>
+                    <td>${r.current_borrow_count}</td>
                     <td><span class="status-badge ${r.active ? 'status-active' : 'status-inactive'}">${r.active ? '启用' : '禁用'}</span></td>
                     <td>
                         ${r.active
                             ? `<button class="btn btn-warning btn-sm" onclick="toggleReader(${r.id}, false)">禁用</button>`
                             : `<button class="btn btn-success btn-sm" onclick="toggleReader(${r.id}, true)">启用</button>`}
-                        <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(${r.id}, ${r.maxBorrowCount})">修改借阅上限</button>
+                        <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(${r.id}, ${r.max_borrow_count})">修改借阅上限</button>
                     </td>
                 </tr>
             `).join('');
@@ -166,7 +162,7 @@
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
                 if (res.ok) {
-                    loadReaders();
+                    loadReaders(currentPage, currentKeyword);
                 } else {
                     alert('操作失败，请检查权限');
                 }
@@ -209,7 +205,7 @@
                 });
                 if (res.ok) {
                     closeModal();
-                    loadReaders();
+                    loadReaders(currentPage, currentKeyword);
                 } else {
                     alert('修改失败');
                 }
@@ -219,11 +215,8 @@
         }
 
         function filterReaders() {
-            const keyword = document.getElementById('readerSearch').value.toLowerCase();
-            document.querySelectorAll('#readersTableBody tr').forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(keyword) ? '' : 'none';
-            });
+            const keyword = document.getElementById('readerSearch').value;
+            loadReaders(1, keyword);
         }
 
         loadReaders();

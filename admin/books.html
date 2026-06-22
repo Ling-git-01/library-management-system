@@ -27,6 +27,9 @@
                     <a href="borrows.html">🔄 借阅处理</a>
                 </li>
                 <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
                     <a href="fines.html">💰 罚金管理</a>
                 </li>
             </ul>
@@ -71,47 +74,11 @@
                     </tr>
                 </thead>
                 <tbody id="booksTableBody">
-                    <tr>
-                        <td>001</td>
-                        <td>JavaScript高级程序设计</td>
-                        <td>Nicholas C. Zakas</td>
-                        <td>978-7-115-27579-0</td>
-                        <td><span class="tag">计算机</span></td>
-                        <td>5</td>
-                        <td><span class="status-badge status-active">在架</span></td>
-                        <td>
-                            <button class="btn btn-primary btn-sm" onclick="editBook(1)">编辑</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteBook(1)">删除</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>002</td>
-                        <td>深入浅出Node.js</td>
-                        <td>朴灵</td>
-                        <td>978-7-115-33135-7</td>
-                        <td><span class="tag">计算机</span></td>
-                        <td>3</td>
-                        <td><span class="status-badge status-active">在架</span></td>
-                        <td>
-                            <button class="btn btn-primary btn-sm" onclick="editBook(2)">编辑</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteBook(2)">删除</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>003</td>
-                        <td>三体</td>
-                        <td>刘慈欣</td>
-                        <td>978-7-5366-9293-0</td>
-                        <td><span class="tag">文学</span></td>
-                        <td>8</td>
-                        <td><span class="status-badge status-inactive">已删除</span></td>
-                        <td>
-                            <button class="btn btn-primary btn-sm" onclick="editBook(3)">编辑</button>
-                            <button class="btn btn-danger btn-sm" disabled>已删除</button>
-                        </td>
-                    </tr>
                 </tbody>
             </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
         </main>
     </div>
 
@@ -130,16 +97,48 @@
     <script src="common.js"></script>
     <script>
         // ============ 图书管理 CRUD ============
-        async function loadBooks() {
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentKeyword = '';
+
+        async function loadBooks(page = 1, keyword = '') {
+            currentPage = page;
+            currentKeyword = keyword;
             try {
-                const res = await fetch('/api/books', {
+                let url = `/api/books?page=${page}&pageSize=${pageSize}`;
+                if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+                const res = await fetch(url, {
                     headers: { 'Authorization': 'Bearer ' + getToken() }
                 });
-                const data = await res.json();
-                renderBooks(data);
+                const result = await res.json();
+                renderBooks(result.data.list);
+                renderPagination(result.data);
             } catch (err) {
                 console.error('获取图书列表失败:', err);
             }
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            loadBooks(page, currentKeyword);
         }
 
         function renderBooks(books) {
@@ -204,15 +203,13 @@
             document.getElementById('modalOverlay').style.display = 'flex';
         }
         function editBook(id) {
-            // 先调 GET /api/books/:id 取详情再填充表单
             fetch(`/api/books/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + getToken() }
             })
                 .then(r => r.json())
                 .then(book => openBookModal(book))
                 .catch(() => {
-                    // 模拟数据
-                    openBookModal({ id, title: '示例图书', author: '作者', isbn: '000-0-000-00000-0', stock: 5, category: '计算机' });
+                    alert('获取图书详情失败');
                 });
         }
         async function saveBook(isEdit) {
@@ -232,7 +229,7 @@
                 });
                 if (res.ok) {
                     closeModal();
-                    loadBooks();
+                    loadBooks(currentPage, currentKeyword);
                 }
             } catch (err) {
                 alert('保存失败: ' + err.message);
@@ -246,16 +243,13 @@
                 method: 'DELETE',
                 headers: { 'Authorization': 'Bearer ' + getToken() }
             })
-                .then(() => loadBooks())
+                .then(() => loadBooks(currentPage, currentKeyword))
                 .catch(err => alert('删除失败: ' + err.message));
         }
 
         function filterBooks() {
-            const keyword = document.getElementById('bookSearch').value.toLowerCase();
-            document.querySelectorAll('#booksTableBody tr').forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(keyword) ? '' : 'none';
-            });
+            const keyword = document.getElementById('bookSearch').value;
+            loadBooks(1, keyword);
         }
 
         loadBooks();
