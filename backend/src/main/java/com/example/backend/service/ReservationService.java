@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ReservationService {
@@ -23,8 +24,20 @@ public class ReservationService {
     public Reservation reserveBook(Integer userId, Integer bookId) {
         Book book = bookRepo.findById(bookId).orElseThrow(() -> new RuntimeException("图书不存在"));
         // 已有待处理预约则禁止重复预约
-        boolean exist = resRepo.existsByUserIdAndBookIdAndStatus(userId, bookId, Reservation.Status.pending);
-        if(exist) throw new RuntimeException("你已预约此书，请勿重复操作");
+        boolean existPending = resRepo.existsByUserIdAndBookIdAndStatus(userId, bookId, Reservation.Status.pending);
+        if(existPending) {
+            throw new RuntimeException("你已预约此书，请勿重复操作");
+        }
+        // 查询是否存在已取消的旧预约
+        Optional<Reservation> cancelResOpt = resRepo.findByUserIdAndBookIdAndStatus(userId, bookId, Reservation.Status.cancelled);
+        if(cancelResOpt.isPresent()){
+            Reservation oldRes = cancelResOpt.get();
+            oldRes.setStatus(Reservation.Status.pending);
+            oldRes.setReserveDate(LocalDateTime.now());
+            oldRes.setExpireDate(LocalDateTime.now().plusDays(3));
+            return resRepo.save(oldRes);
+        }
+        // 无旧取消记录，新建预约
         Reservation res = new Reservation();
         res.setUserId(userId);
         res.setBookId(bookId);
