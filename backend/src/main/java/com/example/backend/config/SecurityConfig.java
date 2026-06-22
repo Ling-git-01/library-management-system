@@ -1,5 +1,6 @@
 package com.example.backend.config;
 
+import com.example.backend.filter.JwtAuthFilter;
 import com.example.backend.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -12,12 +13,16 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private JwtAuthFilter jwtAuthFilter;
 
     @Bean
     @Override
@@ -40,10 +45,11 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         http.cors().and().csrf().disable()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeRequests()
                 // 开放登录、注册、图书、分类接口
                 // 1. 所有公开接口（Day2+Day3全部免登录）
-                .antMatchers("/auth/**","/books/**","/category/**","/borrow/**","/reserve/**","/fine/**","/review/**","/test/**").permitAll()
+                .antMatchers("/auth/**","/books/**","/category/**","/borrow/**","/reserve/**","/fine/**","/review/**").permitAll()
                 // 2. 管理员专属接口
                 .antMatchers("/admin/**").hasRole("admin")
                 // 3. 所有其他接口必须登录
