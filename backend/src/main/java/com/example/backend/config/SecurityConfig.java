@@ -43,7 +43,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .authorizeRequests()
                 // 开放登录、注册、图书、分类接口
                 // 1. 所有公开接口（Day2+Day3全部免登录）
-                .antMatchers("/auth/**","/books/**","/category/**","/borrow/**","/reserve/**","/fine/**","/review/**").permitAll()
+                .antMatchers("/auth/**","/books/**","/category/**","/borrow/**","/reserve/**","/fine/**","/review/**","/test/**").permitAll()
                 // 2. 管理员专属接口
                 .antMatchers("/admin/**").hasRole("admin")
                 // 3. 所有其他接口必须登录
