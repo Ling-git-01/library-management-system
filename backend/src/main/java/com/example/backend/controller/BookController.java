@@ -46,4 +46,11 @@ public class BookController {
         List<Book> list = bookService.getAvailable();
         return ResponseEntity.ok(Map.of("success",true,"count",list.size(),"data",list));
     }
+
+    // 个性化图书推荐 GET /api/books/recommend/{userId}
+    @GetMapping("/recommend/{userId}")
+    public ResponseEntity<?> getRecommend(@PathVariable Integer userId) {
+        List<Book> list = bookService.getRecommendBook(userId);
+        return ResponseEntity.ok(Map.of("success",true,"count",list.size(),"data",list));
+    }
 }
