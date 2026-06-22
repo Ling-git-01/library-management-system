@@ -11,6 +11,15 @@ spring:
     url: JDBC:mysql://localhost:3306/library_management
     username: root # 替换成你本地MySQL账号
     password: 123456 # 替换成你本地MySQL密码
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 2051095129@qq.com  # 你的完整QQ邮箱
+    password: plhzmhpnhsgdbhbi  # 这里粘贴刚拿到的16位授权码，不是QQ密码
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
   jpa:
     hibernate:
       ddl-auto: none
