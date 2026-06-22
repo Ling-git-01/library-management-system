@@ -98,4 +98,8 @@ public class BorrowRecordService {
     public List<Map<String,Object>> getBorrowRank() {
         return borrowRepo.getBookBorrowRank();
     }
+
+    public List<BorrowRecord> listAllBorrow() {
+        return borrowRepo.findAll();
+    }
 }

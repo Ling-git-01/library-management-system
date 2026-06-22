@@ -8,8 +8,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -46,5 +48,39 @@ public class UserService implements UserDetailsService {
 
     public User findUserByName(String username) {
         return userRepo.findByUsername(username).orElseThrow(() -> new RuntimeException("用户不存在"));
+    }
+
+    // 查询所有用户
+    public List<User> listAllUser() {
+        return userRepo.findAll();
+    }
+
+    // 修改用户角色/状态
+    @Transactional
+    public User updateUserRoleAndStatus(Integer id, String roleStr, Integer status) {
+        User user = userRepo.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
+        if (roleStr != null) {
+            user.setRole(User.Role.valueOf(roleStr));
+        }
+        if (status != null) {
+            user.setStatus(status);
+        }
+        return userRepo.save(user);
+    }
+
+    // 重置密码
+    @Transactional
+    public void resetPassword(Integer id, String newPwd) {
+        User user = userRepo.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
+        user.setPassword(PasswordEncoderUtil.encode(newPwd));
+        userRepo.save(user);
+    }
+
+    // 删除用户（逻辑删除：修改状态为0）
+    @Transactional
+    public void deleteUser(Integer id) {
+        User user = userRepo.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
+        user.setStatus(0);
+        userRepo.save(user);
     }
 }

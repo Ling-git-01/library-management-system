@@ -32,4 +32,26 @@ public class FineService {
     public List<Fine> getUserUnpaidFine(Integer userId) {
         return fineRepo.findByUserIdAndStatus(userId, Fine.Status.unpaid);
     }
+
+    @Transactional
+    public void batchHandleFine(List<Integer> fineIds, String type) {
+        for (Integer fineId : fineIds) {
+            Fine fine = fineRepo.findById(fineId).orElseThrow(() -> new RuntimeException("罚金记录不存在：" + fineId));
+            if ("paid".equals(type)) {
+                fine.setStatus(Fine.Status.paid);
+                fine.setPaidAt(LocalDateTime.now());
+            } else if ("waive".equals(type)) {
+                fineRepo.delete(fine); // 减免=删除罚金记录
+                continue;
+            } else {
+                throw new RuntimeException("不支持的处理类型：" + type);
+            }
+            fineRepo.save(fine);
+        }
+    }
+
+    // 查询所有罚金
+    public List<Fine> listAllFine() {
+        return fineRepo.findAll();
+    }
 }
