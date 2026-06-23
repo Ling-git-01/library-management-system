@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>读者管理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>👥 读者管理</h2>
+                <p>读者列表 — 查看 / 禁用启用 / 修改最大借阅数</p>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <div class="search-box">
+                    <input type="text" id="readerSearch" placeholder="搜索用户名、邮箱..." oninput="filterReaders()">
+                </div>
+            </div>
+
+            <!-- 读者表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>用户名</th>
+                        <th>邮箱</th>
+                        <th>最大借阅数</th>
+                        <th>当前借阅</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="readersTableBody">
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 读者管理 ============
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentKeyword = '';
+
+        async function loadReaders(page = 1, keyword = '') {
+            currentPage = page;
+            currentKeyword = keyword;
+            try {
+                let url = `/api/admin/readers?page=${page}&pageSize=${pageSize}`;
+                if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+                const res = await fetch(url, {
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                renderReaders(result.data.list);
+                renderPagination(result.data);
+            } catch (err) {
+                console.error('获取读者列表失败:', err);
+            }
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            loadReaders(page, currentKeyword);
+        }
+
+        function renderReaders(readers) {
+            const tbody = document.getElementById('readersTableBody');
+            tbody.innerHTML = readers.map(r => `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>${r.username}</td>
+                    <td>${r.email}</td>
+                    <td>
+                        <span class="editable-number" onclick="editMaxBorrow(${r.id}, ${r.max_borrow_count})">${r.max_borrow_count}</span>
+                    </td>
+                    <td>${r.current_borrow_count}</td>
+                    <td><span class="status-badge ${r.active ? 'status-active' : 'status-inactive'}">${r.active ? '启用' : '禁用'}</span></td>
+                    <td>
+                        ${r.active
+                            ? `<button class="btn btn-warning btn-sm" onclick="toggleReader(${r.id}, false)">禁用</button>`
+                            : `<button class="btn btn-success btn-sm" onclick="toggleReader(${r.id}, true)">启用</button>`}
+                        <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(${r.id}, ${r.max_borrow_count})">修改借阅上限</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // --- 禁用/启用 ---
+        async function toggleReader(id, enable) {
+            const action = enable ? '启用' : '禁用';
+            if (!confirm(`确定要${action}该读者吗？`)) return;
+            try {
+                const res = await fetch(`/api/admin/readers/${id}/${enable ? 'enable' : 'disable'}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                if (res.ok) {
+                    loadReaders(currentPage, currentKeyword);
+                } else {
+                    alert('操作失败，请检查权限');
+                }
+            } catch (err) {
+                alert('操作失败: ' + err.message);
+            }
+        }
+
+        // --- 修改最大借阅数 ---
+        function editMaxBorrow(id, current) {
+            document.getElementById('modalTitle').textContent = '修改最大借阅数';
+            document.getElementById('modalBody').innerHTML = `
+                <div class="form-group">
+                    <label>当前最大借阅数</label>
+                    <p style="font-size:24px;font-weight:600;">${current}</p>
+                </div>
+                <div class="form-group">
+                    <label>新的最大借阅数 (max_borrow_count)</label>
+                    <input type="number" id="newMaxBorrow" value="${current}" min="1" max="20" required>
+                </div>
+                <p style="color:#7f8c8d;font-size:13px;">⚠ 不可低于该读者当前的借阅数量</p>
+            `;
+            document.getElementById('modalFooter').innerHTML = `
+                <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveMaxBorrow(${id})">确认修改</button>
+            `;
+            document.getElementById('modalOverlay').style.display = 'flex';
+        }
+
+        async function saveMaxBorrow(id) {
+            const newCount = document.getElementById('newMaxBorrow').value;
+            try {
+                const res = await fetch(`/api/admin/readers/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + getToken()
+                    },
+                    body: JSON.stringify({ max_borrow_count: parseInt(newCount) })
+                });
+                if (res.ok) {
+                    closeModal();
+                    loadReaders(currentPage, currentKeyword);
+                } else {
+                    alert('修改失败');
+                }
+            } catch (err) {
+                alert('修改失败: ' + err.message);
+            }
+        }
+
+        function filterReaders() {
+            const keyword = document.getElementById('readerSearch').value;
+            loadReaders(1, keyword);
+        }
+
+        loadReaders();
+    </script>
+</body>
+</html>
