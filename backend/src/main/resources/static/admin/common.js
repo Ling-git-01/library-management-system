@@ -22,7 +22,25 @@ function logout() {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_role');
     localStorage.removeItem('admin_userId');
-    window.location.href = '/';
+    window.location.href = '/api/login.html';
+}
+
+// ---- 渲染右上角用户栏 ----
+function renderTopbar() {
+    const username = localStorage.getItem('admin_username') || localStorage.getItem('admin_role') || '管理员';
+    const bar = document.createElement('div');
+    bar.className = 'topbar';
+    bar.innerHTML =
+        '<span class="topbar-username">' + escapeHtml(username) + '</span>' +
+        '<button class="btn-logout" onclick="logout()">登出</button>';
+    document.body.appendChild(bar);
+}
+
+// 简单 HTML 转义，防止用户名里含特殊字符
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
 }
 
 // ---- 路由守卫：每个 admin 页面加载时强制校验 ----
@@ -30,14 +48,17 @@ function logout() {
     const token = getToken();
     const role = getRole();
     if (!token || role !== 'admin') {
-        // 登录页已删除，暂不跳转；需要登录功能时再恢复此处逻辑
-        console.log('未登录或角色非admin，但登录页已删除，允许直接访问');
-
+        // 未登录或角色非 admin，强制跳到登录页
+        const returnTo = encodeURIComponent(location.pathname);
+        window.location.replace('/api/login.html?return=' + returnTo);
     }
 })();
 
 // 弹窗只通过右上角 ✕ 按钮关闭（不再支持点击遮罩空白处关闭）
 document.addEventListener('DOMContentLoaded', () => {
+    // 渲染右上角用户栏
+    renderTopbar();
+
     const overlay = document.getElementById('modalOverlay');
     if (!overlay) return;
     const closeBtn = overlay.querySelector('.modal-close');

@@ -590,7 +590,57 @@ code {
     }
 }
 
-/* ---- 分页 ---- */
+/* ---- 顶部用户栏（右上角） ---- */
+.topbar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 56px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,0.95);
+    border-bottom-left-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    z-index: 999;
+    font-size: 13px;
+    color: #555;
+}
+
+.topbar-username {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+.topbar-username::before {
+    content: '👤';
+    font-size: 15px;
+}
+
+.topbar .btn-logout {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.topbar .btn-logout:hover {
+    background: #c0392b;
+}
+
+/* 顶部用户栏占位，避免与内容重叠 */
+.main-content {
+    padding-top: 72px;
+}
 .pagination-wrapper {
     display: flex;
     align-items: center;
