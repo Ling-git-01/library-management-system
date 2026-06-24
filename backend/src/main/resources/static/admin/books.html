@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图书管理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>📖 图书管理</h2>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <button class="btn btn-primary" onclick="openBookModal()">+ 新增图书</button>
+                <div class="search-box">
+                    <input type="text" id="bookSearch" placeholder="搜索书名、作者、ISBN..." oninput="filterBooks()">
+                </div>
+            </div>
+
+            <!-- 图书表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>书名</th>
+                        <th>作者</th>
+                        <th>ISBN</th>
+                        <th>分类</th>
+                        <th>总册数</th>
+                        <th>可借阅数</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="booksTableBody">
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 图书管理 CRUD ============
+        // 后端没有统一的分页图书列表接口，约定：
+        //  - 无关键词：GET /books/available
+        //  - 有关键词：GET /books/search?keyword=xxx
+        // 列表数据拉到前端后做内存分页
+        // 后端 Book 实体字段：categoryId、totalCopies、availableCopies、category(BookCategory{name,id,...})
+        // 库存展示用 availableCopies（可借册数），分类名用 category.name
+        let allBooksCache = [];
+        let categoryList = [];   // 分类列表，填充新增/编辑弹窗的下拉
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentKeyword = '';
+
+        async function loadCategories() {
+            try {
+                const res = await fetch('/api/category/list', {
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                categoryList = Array.isArray(result.data) ? result.data : [];
+            } catch (err) {
+                console.error('获取分类列表失败:', err);
+                categoryList = [];
+            }
+        }
+
+        async function loadBooks(page = 1, keyword = '') {
+            currentPage = page;
+            currentKeyword = keyword;
+            try {
+                let res;
+                if (keyword && keyword.trim()) {
+                    res = await fetch(`/api/books/search?keyword=${encodeURIComponent(keyword)}`, {
+                        headers: { 'Authorization': 'Bearer ' + getToken() }
+                    });
+                } else {
+                    res = await fetch('/api/books/available', {
+                        headers: { 'Authorization': 'Bearer ' + getToken() }
+                    });
+                }
+                const result = await res.json();
+                allBooksCache = Array.isArray(result.data) ? result.data : [];
+                const total = allBooksCache.length;
+                const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                const start = (currentPage - 1) * pageSize;
+                const pageList = allBooksCache.slice(start, start + pageSize);
+                renderBooks(pageList);
+                renderPagination({ total, page: currentPage, totalPages });
+            } catch (err) {
+                console.error('获取图书列表失败:', err);
+            }
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            loadBooks(page, currentKeyword);
+        }
+
+        function renderBooks(books) {
+            const tbody = document.getElementById('booksTableBody');
+            tbody.innerHTML = books.map(b => {
+                // 分类名：优先用 category.name（关联对象），否则用 categoryList 反查 categoryId
+                let categoryName = '';
+                if (b.category && b.category.name) {
+                    categoryName = b.category.name;
+                } else if (b.categoryId != null) {
+                    const matched = categoryList.find(c => c.id === b.categoryId);
+                    categoryName = matched ? matched.name : `#${b.categoryId}`;
+                }
+                // 库存：拆分总册数 / 可借册数
+                const totalCopies = b.totalCopies != null ? b.totalCopies : 0;
+                const availableCopies = b.availableCopies != null ? b.availableCopies : 0;
+                const stockColor = availableCopies === 0 ? 'style="color:#e74c3c;font-weight:600;"' : '';
+                return `
+                <tr>
+                    <td>${b.id}</td>
+                    <td>${b.title}</td>
+                    <td>${b.author}</td>
+                    <td>${b.isbn}</td>
+                    <td><span class="tag">${categoryName}</span></td>
+                    <td>${totalCopies}</td>
+                    <td ${stockColor}>${availableCopies}</td>
+                    <td><span class="status-badge ${b.status === 1 ? 'status-active' : 'status-inactive'}">${b.status === 1 ? '在架' : '已删除'}</span></td>
+                    <td>
+                        <button class="btn btn-primary btn-sm" onclick="editBook(${b.id})">编辑</button>
+                        ${b.status === 1
+                            ? `<button class="btn btn-danger btn-sm" onclick="deleteBook(${b.id})">删除</button>`
+                            : `<button class="btn btn-danger btn-sm" disabled>已删除</button>`}
+                    </td>
+                </tr>
+            `;
+            }).join('');
+        }
+
+        // --- 新增 ---
+        function openBookModal(book = null) {
+            const isEdit = !!book;
+            document.getElementById('modalTitle').textContent = isEdit ? '编辑图书' : '新增图书';
+            // 编辑时取 categoryId，新增时默认选第一个
+            const currentCategoryId = book
+                ? (book.categoryId != null ? book.categoryId : (book.category ? book.category.id : ''))
+                : (categoryList[0] ? categoryList[0].id : '');
+            const categoryOptions = categoryList.map(c =>
+                `<option value="${c.id}" ${c.id === currentCategoryId ? 'selected' : ''}>${c.name}</option>`
+            ).join('');
+            const currentTotal = book ? (book.totalCopies != null ? book.totalCopies : 1) : 1;
+            const currentAvail = book ? (book.availableCopies != null ? book.availableCopies : 1) : 1;
+            document.getElementById('modalBody').innerHTML = `
+                <form id="bookForm">
+                    <div class="form-group">
+                        <label>书名</label>
+                        <input type="text" name="title" value="${book ? book.title : ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>作者</label>
+                        <input type="text" name="author" value="${book ? book.author : ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>ISBN</label>
+                        <input type="text" name="isbn" value="${book ? book.isbn : ''}" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>分类</label>
+                            <select name="categoryId">
+                                ${categoryOptions || '<option value="">暂无可用分类</option>'}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>总册数 (totalCopies)</label>
+                            <input type="number" name="totalCopies" value="${currentTotal}" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label>可借阅数 (availableCopies)</label>
+                            <input type="number" name="availableCopies" value="${currentAvail}" min="0" max="${currentTotal}" required>
+                            <small style="color:#7f8c8d;">不能超过总册数；新增时一般 = 总册数</small>
+                        </div>
+                    </div>
+                    <input type="hidden" name="id" value="${book ? book.id : ''}">
+                </form>
+            `;
+            document.getElementById('modalFooter').innerHTML = `
+                <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveBook(${isEdit})">${isEdit ? '保存修改' : '确认新增'}</button>
+            `;
+            document.getElementById('modalOverlay').style.display = 'flex';
+        }
+        function editBook(id) {
+            fetch(`/api/books/${id}`, {
+                headers: { 'Authorization': 'Bearer ' + getToken() }
+            })
+                .then(r => r.json())
+                .then(result => {
+                    if (!result.success) { alert('获取图书详情失败: ' + (result.msg || '')); return; }
+                    openBookModal(result.data);
+                })
+                .catch(() => {
+                    alert('获取图书详情失败');
+                });
+        }
+        async function saveBook(isEdit) {
+            const form = document.getElementById('bookForm');
+            const formData = new FormData(form);
+            const body = Object.fromEntries(formData);
+            // categoryId 是字符串，转成数字
+            if (body.categoryId) body.categoryId = parseInt(body.categoryId, 10);
+            if (body.totalCopies != null) body.totalCopies = parseInt(body.totalCopies, 10);
+            if (body.availableCopies != null) body.availableCopies = parseInt(body.availableCopies, 10);
+            let url, method;
+            if (isEdit) {
+                url = `/api/admin/books/update/${body.id}`;
+                method = 'PUT';
+            } else {
+                url = '/api/admin/books/add';
+                method = 'POST';
+                // 新增接口不接收 id，移除
+                delete body.id;
+            }
+            try {
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + getToken()
+                    },
+                    body: JSON.stringify(body)
+                });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    closeModal();
+                    loadBooks(currentPage, currentKeyword);
+                } else {
+                    alert('保存失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('保存失败: ' + err.message);
+            }
+        }
+
+        // --- 删除（物理删除） ---
+        function deleteBook(id) {
+            if (!confirm('确定删除该书吗？（物理删除）')) return;
+            fetch(`/api/admin/books/delete/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + getToken() }
+            })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        loadBooks(currentPage, currentKeyword);
+                    } else {
+                        alert('删除失败: ' + (result.msg || ''));
+                    }
+                })
+                .catch(err => alert('删除失败: ' + err.message));
+        }
+
+        function filterBooks() {
+            const keyword = document.getElementById('bookSearch').value;
+            loadBooks(1, keyword);
+        }
+
+        async function init() {
+            await loadCategories();
+            await loadBooks();
+        }
+        init();
+    </script>
+</body>
+</html>

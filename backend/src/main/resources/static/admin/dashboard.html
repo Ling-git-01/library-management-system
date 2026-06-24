@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仪表盘 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>📊 管理后台仪表盘</h2>
+            </div>
+
+            <!-- 统计卡片：借阅三态 + 罚金 + 读者 + 图书 -->
+            <div class="stats-grid">
+                <div class="stat-card primary">
+                    <div class="stat-label">👥 总读者数</div>
+                    <div class="stat-value">—</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">📚 总图书数</div>
+                    <div class="stat-value">—</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-label">📖 借阅中</div>
+                    <div class="stat-value">—</div>
+                </div>
+                <div class="stat-card info">
+                    <div class="stat-label">✅ 已归还</div>
+                    <div class="stat-value">—</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-label">⏰ 已逾期</div>
+                    <div class="stat-value">—</div>
+                </div>
+                <div class="stat-card accent">
+                    <div class="stat-label">💰 未缴罚金</div>
+                    <div class="stat-value">—</div>
+                </div>
+            </div>
+
+            <!-- 分类统计 + 趋势图 -->
+            <div class="charts-grid">
+                <div class="chart-box">
+                    <h3>📂 各分类图书统计</h3>
+                    <canvas id="categoryChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <h3>📈 近7天借阅趋势图</h3>
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 读取仪表盘数据 ============
+        // 后端没有 /api/admin/dashboard 接口；这里并发请求多个已有接口拼出近似数据
+        // - 总读者数：GET /admin/user/list
+        // - 总图书数：GET /books/available
+        // - 借阅三态：GET /admin/borrow/list 按 status 分组（borrowing/returned/overdue）
+        // - 未缴罚金：GET /admin/borrow/fine/list 算 amount 之和 + 记录数
+        // - 分类统计：GET /category/list + GET /books/category/{id}（每个分类数量）
+        // - 7天趋势：GET /admin/borrow/list 按 borrowDate 分组
+        async function loadDashboard() {
+            const headers = { 'Authorization': 'Bearer ' + getToken() };
+            const tasks = {};
+            try { tasks.users = (await fetch('/api/admin/user/list', { headers })).json(); } catch (e) { console.warn('users fail', e); }
+            try { tasks.books = (await fetch('/api/books/available', { headers })).json(); } catch (e) { console.warn('books fail', e); }
+            try { tasks.borrows = (await fetch('/api/admin/borrow/list', { headers })).json(); } catch (e) { console.warn('borrows fail', e); }
+            try { tasks.categories = (await fetch('/api/category/list', { headers })).json(); } catch (e) { console.warn('categories fail', e); }
+            try { tasks.fines = (await fetch('/api/admin/borrow/fine/list', { headers })).json(); } catch (e) { console.warn('fines fail', e); }
+
+            const [usersR, booksR, borrowsR, categoriesR, finesR] = await Promise.all([
+                tasks.users || Promise.resolve({ success: false }),
+                tasks.books || Promise.resolve({ success: false }),
+                tasks.borrows || Promise.resolve({ success: false }),
+                tasks.categories || Promise.resolve({ success: false }),
+                tasks.fines || Promise.resolve({ success: false })
+            ]);
+
+            const users = usersR.success ? (usersR.data || []) : [];
+            const books = booksR.success ? (booksR.data || []) : [];
+            const borrows = borrowsR.success ? (borrowsR.data || []) : [];
+            const categories = categoriesR.success ? (categoriesR.data || []) : [];
+            const fines = finesR.success ? (finesR.data || []) : [];
+
+            // 借阅三态：以后端 status 字段为准（borrowing/returned/overdue）
+            let borrowingCount = 0, returnedCount = 0, overdueCount = 0;
+            for (const b of borrows) {
+                if (b.status === 'borrowing') borrowingCount++;
+                else if (b.status === 'returned') returnedCount++;
+                else if (b.status === 'overdue') overdueCount++;
+            }
+
+            // 未缴罚金：status=unpaid 的 amount 之和 + 记录数
+            const unpaidFines = fines.filter(f => f.status !== 'paid');
+            const unpaidAmount = unpaidFines.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+
+            // 分类统计：每个分类调一次 /books/category/{id} 拿 count
+            const categoryStats = await loadCategoryStats(categories);
+
+            // 7天趋势：按 borrowDate 分组到 [6天前..今天] 7 个桶
+            const trendData = computeTrend(borrows, 7);
+
+            renderStats({
+                totalReaders: users.length,
+                totalBooks: books.length,
+                borrowingCount,
+                returnedCount,
+                overdueCount,
+                unpaidAmount
+            });
+            renderCharts({
+                categoryStats,
+                trendData
+            });
+        }
+
+        // 并发拉取每个分类的图书数
+        async function loadCategoryStats(categories) {
+            if (!Array.isArray(categories) || categories.length === 0) return [];
+            const headers = { 'Authorization': 'Bearer ' + getToken() };
+            const promises = categories.map(async (c) => {
+                try {
+                    const r = await fetch(`/api/books/category/${c.id}`, { headers });
+                    const result = await r.json();
+                    return { name: c.name, count: result.success ? (result.count || 0) : 0 };
+                } catch (e) {
+                    return { name: c.name, count: 0 };
+                }
+            });
+            return Promise.all(promises);
+        }
+
+        // 把借阅记录按 borrowDate 分到过去 N 天的桶里（今天在末尾）
+        function computeTrend(borrows, days) {
+            const buckets = new Array(days).fill(0);
+            const labels = [];
+            const now = new Date();
+            // 把今天的 0 点算出来
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(today);
+                d.setDate(d.getDate() - i);
+                labels.push((d.getMonth() + 1) + '/' + d.getDate());
+            }
+            for (const b of borrows) {
+                if (!b.borrowDate) continue;
+                const bd = new Date(b.borrowDate);
+                // 距离今天 0 点的天数差
+                const diffDays = Math.floor((today - new Date(bd.getFullYear(), bd.getMonth(), bd.getDate())) / 86400000);
+                if (diffDays >= 0 && diffDays < days) {
+                    const idx = days - 1 - diffDays; // 末尾是今天
+                    buckets[idx]++;
+                }
+            }
+            return { labels, data: buckets };
+        }
+
+        function renderStats(data) {
+            // 顺序匹配 HTML：primary(总读者) / success(总图书) / warning(借阅中) / info(已归还) / danger(已逾期) / accent(未缴罚金)
+            const cards = document.querySelectorAll('.stats-grid .stat-card');
+            if (cards.length < 6) return;
+            const vals = [data.totalReaders, data.totalBooks, data.borrowingCount, data.returnedCount, data.overdueCount, '¥' + Number(data.unpaidAmount || 0).toFixed(2)];
+            cards.forEach((c, i) => {
+                const v = c.querySelector('.stat-value');
+                if (v && vals[i] != null) v.textContent = vals[i];
+            });
+        }
+
+        function renderCharts(data) {
+            // 分类统计饼图
+            const catCtx = document.getElementById('categoryChart').getContext('2d');
+            new Chart(catCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: data.categoryStats.map(c => c.name),
+                    datasets: [{
+                        data: data.categoryStats.map(c => c.count),
+                        backgroundColor: ['#3498db','#2ecc71','#e74c3c','#f39c12','#9b59b6','#1abc9c']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // 7天趋势折线图
+            const trendCtx = document.getElementById('trendChart').getContext('2d');
+            new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: data.trendData.labels,
+                    datasets: [{
+                        label: '借阅量',
+                        data: data.trendData.data,
+                        borderColor: '#e67e22',
+                        backgroundColor: 'rgba(230,126,34,0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    }
+                }
+            });
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>

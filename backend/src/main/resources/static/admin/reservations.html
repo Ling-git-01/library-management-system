@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>预约管理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>📅 预约管理</h2>
+            </div>
+
+            <!-- 统计概要 -->
+            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="stat-card warning">
+                    <div class="stat-label">待处理</div>
+                    <div class="stat-value" id="pendingCount">—</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">已满足</div>
+                    <div class="stat-value" id="fulfilledCount">—</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-label">已取消</div>
+                    <div class="stat-value" id="cancelledCount">—</div>
+                </div>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <div class="tabs">
+                    <button class="tab active" onclick="filterReservations('all')">全部</button>
+                    <button class="tab" onclick="filterReservations('pending')">待处理</button>
+                    <button class="tab" onclick="filterReservations('fulfilled')">已满足</button>
+                    <button class="tab" onclick="filterReservations('cancelled')">已取消</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="reservationSearch" placeholder="搜索读者/书名...">
+                </div>
+            </div>
+
+            <!-- 预约表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>读者</th>
+                        <th>书名</th>
+                        <th>预约时间</th>
+                        <th>过期时间</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="reservationsTableBody">
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 预约管理 ============
+        // 取消 / 确认满足走新的 admin 接口：
+        //   - GET  /api/admin/reserve/list
+        //   - PUT  /api/admin/reserve/fulfill/{id}  （pending -> fulfilled）
+        //   - PUT  /api/admin/reserve/cancel/{id}   （pending -> cancelled）
+        // /list 返回的 Reservation 没带 user/book 关联对象（findAll 默认不会序列化代理），
+        // 所以这里并发拉一次 /admin/user/list 和 /books/available 构字典反查
+        let allReservations = [];
+        let userMap = {};   // userId -> username
+        let bookMap = {};   // bookId -> title
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentStatus = 'all';
+        let currentKeyword = '';
+
+        async function loadReservations(page = 1, status = 'all', keyword = '') {
+            currentPage = page;
+            currentStatus = status;
+            currentKeyword = keyword;
+            try {
+                const headers = { 'Authorization': 'Bearer ' + getToken() };
+                const [resRes, usersRes, booksRes] = await Promise.all([
+                    fetch('/api/admin/reserve/list', { headers }).then(r => r.json()),
+                    fetch('/api/admin/user/list', { headers }).then(r => r.json()).catch(() => ({ success: false })),
+                    fetch('/api/books/available', { headers }).then(r => r.json()).catch(() => ({ success: false }))
+                ]);
+                if (!resRes.success) { throw new Error('预约列表加载失败'); }
+                allReservations = resRes.data || [];
+                // 构字典
+                userMap = {};
+                if (usersRes.success && Array.isArray(usersRes.data)) {
+                    for (const u of usersRes.data) userMap[u.id] = u.username || u.realName || `#${u.id}`;
+                }
+                bookMap = {};
+                if (booksRes.success && Array.isArray(booksRes.data)) {
+                    for (const b of booksRes.data) bookMap[b.id] = b.title || `#${b.id}`;
+                }
+                applyAndRender();
+            } catch (err) {
+                console.error('获取预约记录失败:', err);
+            }
+        }
+
+        function updateStats() {
+            const pending = allReservations.filter(r => r.status === 'pending').length;
+            const fulfilled = allReservations.filter(r => r.status === 'fulfilled').length;
+            const cancelled = allReservations.filter(r => r.status === 'cancelled').length;
+            document.getElementById('pendingCount').textContent = pending;
+            document.getElementById('fulfilledCount').textContent = fulfilled;
+            document.getElementById('cancelledCount').textContent = cancelled;
+        }
+
+        function getFilteredReservations() {
+            return allReservations.filter(r => {
+                if (currentStatus !== 'all' && r.status !== currentStatus) return false;
+                if (currentKeyword) {
+                    const kw = currentKeyword.toLowerCase();
+                    const userName = (r.user && (r.user.username || r.user.realName)) || userMap[r.userId] || '';
+                    const bookTitle = (r.book && r.book.title) || bookMap[r.bookId] || '';
+                    const text = `${r.id} ${r.userId} ${r.bookId} ${userName} ${bookTitle}`.toLowerCase();
+                    if (!text.includes(kw)) return false;
+                }
+                return true;
+            });
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            if (totalPages <= 1) { container.innerHTML = `<div class="pagination-info">共 ${total} 条</div>`; return; }
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            applyAndRender();
+        }
+
+        function applyAndRender() {
+            const list = getFilteredReservations();
+            const total = list.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const pageList = list.slice(start, start + pageSize);
+            renderReservations(pageList);
+            renderPagination({ total, page: currentPage, totalPages });
+            updateStats();
+        }
+
+        function renderReservations(reservations) {
+            const tbody = document.getElementById('reservationsTableBody');
+            if (!reservations.length) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#7f8c8d;">暂无数据</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = reservations.map(r => {
+                let statusClass, statusText;
+                if (r.status === 'fulfilled') {
+                    statusClass = 'status-active';
+                    statusText = '已满足';
+                } else if (r.status === 'cancelled') {
+                    statusClass = '';
+                    statusText = '已取消';
+                } else {
+                    statusClass = '';
+                    statusText = '待处理';
+                }
+                // 优先用关联对象，否则用 userMap/bookMap 反查，最后回退到 ID
+                const userName = (r.user && (r.user.username || r.user.realName))
+                    || userMap[r.userId]
+                    || r.userId
+                    || '—';
+                const bookTitle = (r.book && r.book.title)
+                    || bookMap[r.bookId]
+                    || r.bookId
+                    || '—';
+                return `
+                    <tr data-status="${r.status}">
+                        <td>${r.id}</td>
+                        <td>${userName}</td>
+                        <td>${bookTitle}</td>
+                        <td>${r.reserveDate || '—'}</td>
+                        <td>${r.expireDate || '—'}</td>
+                        <td><span class="status-badge" style="${statusClass ? '' : (r.status === 'cancelled' ? 'background:#f8d7da;color:#721c24;' : 'background:#fff3cd;color:#856404;')}">${statusText}</span></td>
+                        <td>
+                            ${r.status === 'pending' ? `
+                                <button class="btn btn-success btn-sm" onclick="fulfillReservation(${r.id})">确认满足</button>
+                                <button class="btn btn-warning btn-sm" onclick="adminCancelReservation(${r.id})">取消</button>
+                            ` : '<span style="color:#7f8c8d;">—</span>'}
+                            <button class="btn btn-danger btn-sm" onclick="deleteReservation(${r.id})">删除</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // --- 物理删除预约 ---
+        async function deleteReservation(id) {
+            if (!confirm('确定要物理删除该预约吗？此操作不可恢复')) return;
+            try {
+                const res = await fetch(`/api/admin/reserve/delete/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    loadReservations(currentPage, currentStatus, currentKeyword);
+                } else {
+                    alert('删除失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('删除失败: ' + err.message);
+            }
+        }
+
+        // --- 确认满足预约 ---
+        async function fulfillReservation(id) {
+            if (!confirm('确认该预约已满足吗？')) return;
+            try {
+                const res = await fetch(`/api/admin/reserve/fulfill/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    loadReservations(currentPage, currentStatus, currentKeyword);
+                } else {
+                    alert('确认满足失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('确认满足失败: ' + err.message);
+            }
+        }
+
+        // --- 管理员取消预约（不走普通用户的 cancel 接口，便于错误提示） ---
+        async function adminCancelReservation(id) {
+            if (!confirm('确定取消该预约吗？')) return;
+            try {
+                const res = await fetch(`/api/admin/reserve/cancel/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    loadReservations(currentPage, currentStatus, currentKeyword);
+                } else {
+                    alert('取消预约失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('取消预约失败: ' + err.message);
+            }
+        }
+
+        // --- 标签页筛选 ---
+        function filterReservations(status) {
+            if (typeof status === 'string') {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                if (status !== 'all') {
+                    document.querySelectorAll('.tab').forEach(t => {
+                        if (t.textContent.includes(
+                            status === 'pending' ? '待处理' :
+                            status === 'fulfilled' ? '已满足' : '已取消'
+                        )) t.classList.add('active');
+                    });
+                } else {
+                    document.querySelector('.tab').classList.add('active');
+                }
+                currentStatus = status;
+                currentPage = 1;
+                applyAndRender();
+                return;
+            }
+            // 搜索输入（无参数）- 重新过滤
+            currentKeyword = document.getElementById('reservationSearch').value;
+            currentPage = 1;
+            applyAndRender();
+        }
+
+        document.getElementById('reservationSearch').addEventListener('input', () => filterReservations());
+
+        loadReservations();
+    </script>
+</body>
+</html>

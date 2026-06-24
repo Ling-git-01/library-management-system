@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>借阅处理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>🔄 借阅处理</h2>
+            </div>
+
+            <!-- 统计概要（实时从 allBorrowsCache 算） -->
+            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="stat-card warning">
+                    <div class="stat-label">借阅中</div>
+                    <div class="stat-value" id="statBorrowing">0</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">已归还</div>
+                    <div class="stat-value" id="statReturned">0</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-label">已逾期</div>
+                    <div class="stat-value" id="statOverdue">0</div>
+                </div>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <div class="tabs">
+                    <button class="tab active" onclick="filterBorrows('all')">全部</button>
+                    <button class="tab" onclick="filterBorrows('borrowing')">借阅中</button>
+                    <button class="tab" onclick="filterBorrows('overdue')">已逾期</button>
+                    <button class="tab" onclick="filterBorrows('returned')">已归还</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="borrowSearch" placeholder="搜索读者/书名...">
+                </div>
+            </div>
+
+            <!-- 借阅表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>读者</th>
+                        <th>书名</th>
+                        <th>借阅日期</th>
+                        <th>应还日期</th>
+                        <th>实际归还</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="borrowsTableBody">
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 借阅处理 ============
+        // /admin/borrow/list 一次返回全部记录，状态/搜索改为前端过滤
+        // 关联对象 user/book 通过并发拉 /admin/user/list 和 /books/available 构字典反查
+        // （跟 reservations.html 同一套路：JPA @ManyToOne 代理在 Jackson 序列化时拿不到值）
+        let allBorrowsCache = [];
+        let userMap = {};   // userId -> username
+        let bookMap = {};   // bookId -> title
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentStatus = 'all';
+        let currentKeyword = '';
+
+        async function loadBorrows(page = 1, status = 'all', keyword = '') {
+            currentPage = page;
+            currentStatus = status;
+            currentKeyword = keyword;
+            try {
+                const headers = { 'Authorization': 'Bearer ' + getToken() };
+                const [borrowRes, usersRes, booksRes] = await Promise.all([
+                    fetch('/api/admin/borrow/list', { headers }).then(r => r.json()),
+                    fetch('/api/admin/user/list', { headers }).then(r => r.json()).catch(() => ({ success: false })),
+                    fetch('/api/books/available', { headers }).then(r => r.json()).catch(() => ({ success: false }))
+                ]);
+                allBorrowsCache = Array.isArray(borrowRes.data) ? borrowRes.data : [];
+                // 构字典
+                userMap = {};
+                if (usersRes.success && Array.isArray(usersRes.data)) {
+                    for (const u of usersRes.data) userMap[u.id] = u.username || u.realName || `#${u.id}`;
+                }
+                bookMap = {};
+                if (booksRes.success && Array.isArray(booksRes.data)) {
+                    for (const b of booksRes.data) bookMap[b.id] = b.title || `#${b.id}`;
+                }
+                applyAndRender();
+            } catch (err) {
+                console.error('获取借阅记录失败:', err);
+            }
+        }
+
+        function getFilteredBorrows() {
+            const now = new Date();
+            return allBorrowsCache.filter(b => {
+                // 状态过滤
+                if (currentStatus === 'borrowing' && b.returnDate) return false;
+                if (currentStatus === 'returned' && !b.returnDate) return false;
+                if (currentStatus === 'overdue') {
+                    if (b.returnDate) return false;
+                    if (!b.dueDate) return false;
+                    if (new Date(b.dueDate) >= now) return false;
+                }
+                // 关键词过滤
+                if (currentKeyword) {
+                    const kw = currentKeyword.toLowerCase();
+                    const userName = (b.user && (b.user.username || b.user.realName)) || userMap[b.userId] || '';
+                    const bookTitle = (b.book && b.book.title) || bookMap[b.bookId] || '';
+                    const text = `${b.id} ${userName} ${bookTitle} ${b.userId || ''} ${b.bookId || ''}`.toLowerCase();
+                    if (!text.includes(kw)) return false;
+                }
+                return true;
+            });
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            if (totalPages <= 1) { container.innerHTML = `<div class="pagination-info">共 ${total} 条</div>`; return; }
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            applyAndRender();
+        }
+
+        function applyAndRender() {
+            const list = getFilteredBorrows();
+            const total = list.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const pageList = list.slice(start, start + pageSize);
+            renderBorrows(pageList);
+            renderPagination({ total, page: currentPage, totalPages });
+            updateStats();
+        }
+
+        // 实时统计三态数量（基于全量缓存）
+        function updateStats() {
+            const now = new Date();
+            let borrowing = 0, returned = 0, overdue = 0;
+            for (const b of allBorrowsCache) {
+                if (b.returnDate) {
+                    returned++;
+                } else if (b.dueDate && new Date(b.dueDate) < now) {
+                    overdue++;
+                } else {
+                    borrowing++;
+                }
+            }
+            const eB = document.getElementById('statBorrowing');
+            const eR = document.getElementById('statReturned');
+            const eO = document.getElementById('statOverdue');
+            if (eB) eB.textContent = borrowing;
+            if (eR) eR.textContent = returned;
+            if (eO) eO.textContent = overdue;
+        }
+
+        function renderBorrows(borrows) {
+            const tbody = document.getElementById('borrowsTableBody');
+            if (!borrows.length) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#7f8c8d;">暂无数据</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = borrows.map(b => {
+                let statusClass, statusText;
+                const due = b.dueDate ? new Date(b.dueDate) : null;
+                const isOverdue = !b.returnDate && due && due < new Date();
+                if (b.returnDate) {
+                    statusClass = 'status-active';
+                    statusText = '已归还';
+                } else if (isOverdue) {
+                    statusClass = '';
+                    statusText = '已逾期';
+                } else {
+                    statusClass = '';
+                    statusText = '借阅中';
+                }
+                // 优先用关联对象，否则用字典反查
+                const userName = (b.user && (b.user.username || b.user.realName))
+                    || userMap[b.userId]
+                    || b.userId
+                    || '—';
+                const bookTitle = (b.book && b.book.title)
+                    || bookMap[b.bookId]
+                    || b.bookId
+                    || '—';
+                return `
+                    <tr data-status="${b.returnDate ? 'returned' : (isOverdue ? 'overdue' : 'borrowing')}">
+                        <td>${b.id}</td>
+                        <td>${userName}</td>
+                        <td>${bookTitle}</td>
+                        <td>${b.borrowDate || ''}</td>
+                        <td>${b.dueDate || ''}</td>
+                        <td>${b.returnDate || '—'}</td>
+                        <td><span class="status-badge" style="${statusClass ? '' : (statusText === '已逾期' ? 'background:#f8d7da;color:#721c24;' : 'background:#fff3cd;color:#856404;')}">${statusText}</span></td>
+                        <td>
+                            ${!b.returnDate
+                                ? `<button class="btn btn-success btn-sm" onclick="returnBook(${b.id})">手动还书</button>`
+                                : '<span style="color:#7f8c8d;">—</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // --- 手动还书 ---
+        async function returnBook(id) {
+            if (!confirm('确定帮读者归还该书吗？（由管理员手动操作）')) return;
+            try {
+                const res = await fetch(`/api/admin/borrow/forceReturn/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    loadBorrows(currentPage, currentStatus, currentKeyword);
+                } else {
+                    alert('还书操作失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('还书操作失败: ' + err.message);
+            }
+        }
+
+        // --- 标签页筛选 ---
+        function filterBorrows(status) {
+            if (typeof status === 'string') {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                if (status !== 'all') {
+                    document.querySelectorAll('.tab').forEach(t => {
+                        if (t.textContent.includes(
+                            status === 'borrowing' ? '借阅中' :
+                            status === 'overdue' ? '已逾期' : '已归还'
+                        )) t.classList.add('active');
+                    });
+                } else {
+                    document.querySelector('.tab').classList.add('active');
+                }
+                currentStatus = status;
+                currentPage = 1;
+                applyAndRender();
+                return;
+            }
+            // 搜索输入（无参数）- 重新拉取并过滤
+            currentKeyword = document.getElementById('borrowSearch').value;
+            currentPage = 1;
+            applyAndRender();
+        }
+
+        document.getElementById('borrowSearch').addEventListener('input', () => filterBorrows());
+
+        loadBorrows();
+    </script>
+</body>
+</html>

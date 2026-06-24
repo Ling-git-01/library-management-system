@@ -56,7 +56,39 @@ public class ReservationService {
         return resRepo.save(res);
     }
 
+    // 管理员确认满足预约（仅 pending 可履行）
+    @Transactional
+    public Reservation fulfillReserve(Integer resId) {
+        Reservation res = resRepo.findById(resId).orElseThrow(() -> new RuntimeException("预约记录不存在"));
+        if(res.getStatus() != Reservation.Status.pending) throw new RuntimeException("仅待处理预约可确认满足");
+        res.setStatus(Reservation.Status.fulfilled);
+        return resRepo.save(res);
+    }
+
+    // 管理员强制取消任意状态的预约
+    @Transactional
+    public Reservation adminCancelReserve(Integer resId) {
+        Reservation res = resRepo.findById(resId).orElseThrow(() -> new RuntimeException("预约记录不存在"));
+        if(res.getStatus() == Reservation.Status.fulfilled) throw new RuntimeException("已履行的预约不可取消");
+        res.setStatus(Reservation.Status.cancelled);
+        return resRepo.save(res);
+    }
+
+    // 管理员物理删除预约
+    @Transactional
+    public void deleteReserve(Integer resId) {
+        if (!resRepo.existsById(resId)) {
+            throw new RuntimeException("预约记录不存在");
+        }
+        resRepo.deleteById(resId);
+    }
+
     public List<Reservation> getUserReserve(Integer userId) {
         return resRepo.findByUserId(userId);
+    }
+
+    // 管理员查询全部预约
+    public List<Reservation> listAll() {
+        return resRepo.findAll();
     }
 }

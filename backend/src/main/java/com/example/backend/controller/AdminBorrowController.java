@@ -8,6 +8,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,11 +41,52 @@ public class AdminBorrowController {
         }
     }
 
-    // 查询所有罚金记录
+    // 查询所有罚金记录（手动组装：附带 username、bookTitle、overdueDays）
     @GetMapping("/fine/list")
     public ResponseEntity<?> listAllFine() {
-        List<Fine> list = fineService.listAllFine();
-        return ResponseEntity.ok(Map.of("success", true, "count", list.size(), "data", list));
+        List<Fine> fines = fineService.listAllFine();
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (Fine f : fines) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", f.getId());
+            m.put("userId", f.getUserId());
+            m.put("borrowId", f.getBorrowId());
+            m.put("amount", f.getAmount());
+            m.put("reason", f.getReason());
+            m.put("status", f.getStatus());
+            m.put("createdAt", f.getCreatedAt());
+            m.put("paidAt", f.getPaidAt());
+            // 借阅关联对象（避免 JPA 代理失败，包成 try/catch）
+            String username = "", bookTitle = "";
+            LocalDateTime dueDate = null, returnDate = null;
+            try {
+                BorrowRecord br = f.getBorrowRecord();
+                if (br != null) {
+                    dueDate = br.getDueDate();
+                    returnDate = br.getReturnDate();
+                    try {
+                        if (br.getUser() != null) username = br.getUser().getUsername();
+                    } catch (Exception ignore) {}
+                    try {
+                        if (br.getBook() != null) bookTitle = br.getBook().getTitle();
+                    } catch (Exception ignore) {}
+                }
+            } catch (Exception ignore) {}
+            m.put("username", username);
+            m.put("bookTitle", bookTitle);
+            // 逾期天数 = returnDate - dueDate（已还）；未还则取今天 - dueDate
+            int overdueDays = 0;
+            if (dueDate != null) {
+                LocalDateTime ref = returnDate != null ? returnDate : LocalDateTime.now();
+                if (ref.isAfter(dueDate)) {
+                    overdueDays = (int) ChronoUnit.DAYS.between(dueDate, ref);
+                    if (overdueDays < 0) overdueDays = 0;
+                }
+            }
+            m.put("overdueDays", overdueDays);
+            data.add(m);
+        }
+        return ResponseEntity.ok(Map.of("success", true, "count", data.size(), "data", data));
     }
 
     // 批量处理罚金（标记为已缴/减免）

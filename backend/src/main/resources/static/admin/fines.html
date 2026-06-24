@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>罚金管理 - 图书馆管理后台</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>📚 图书管理系统</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="dashboard.html">📊 仪表盘</a>
+                </li>
+                <li class="nav-item">
+                    <a href="books.html">📖 图书管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="readers.html">👥 读者管理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="borrows.html">🔄 借阅处理</a>
+                </li>
+                <li class="nav-item">
+                    <a href="reservations.html">📅 预约管理</a>
+                </li>
+                <li class="nav-item active">
+                    <a href="fines.html">💰 罚金管理</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>💰 罚金管理</h2>
+            </div>
+
+            <!-- 统计概要（实时从 allFinesCache 算） -->
+            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="stat-card danger">
+                    <div class="stat-label">未缴纳金额</div>
+                    <div class="stat-value" id="statUnpaidAmount">¥0.00</div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-label">未缴记录数</div>
+                    <div class="stat-value" id="statUnpaidCount">0</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">已缴纳记录</div>
+                    <div class="stat-value" id="statPaidCount">0</div>
+                </div>
+            </div>
+
+            <!-- 操作栏 -->
+            <div class="toolbar">
+                <div class="tabs">
+                    <button class="tab active" onclick="filterFines('unpaid')">未缴纳</button>
+                    <button class="tab" onclick="filterFines('paid')">已缴纳</button>
+                    <button class="tab" onclick="filterFines('all')">全部</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="fineSearch" placeholder="搜索读者名...">
+                </div>
+            </div>
+
+            <!-- 罚金表格 -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>读者</th>
+                        <th>关联借阅ID</th>
+                        <th>逾期天数</th>
+                        <th>罚金金额</th>
+                        <th>缴纳状态</th>
+                        <th>缴纳时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="finesTableBody">
+                </tbody>
+            </table>
+
+            <!-- 分页 -->
+            <div class="pagination-wrapper" id="pagination"></div>
+        </main>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">弹窗标题</h3>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // ============ 罚金管理 ============
+        // 后端 GET /admin/borrow/fine/list 一次性返回全部罚金记录，状态/搜索改为前端过滤
+        let allFinesCache = [];
+        let currentPage = 1;
+        const pageSize = 10;
+        let currentStatus = 'unpaid';
+        let currentKeyword = '';
+
+        async function loadFines(page = 1, status = 'unpaid', keyword = '') {
+            currentPage = page;
+            currentStatus = status;
+            currentKeyword = keyword;
+            try {
+                const res = await fetch('/api/admin/borrow/fine/list', {
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                allFinesCache = Array.isArray(result.data) ? result.data : [];
+                applyAndRender();
+            } catch (err) {
+                console.error('获取罚金列表失败:', err);
+            }
+        }
+
+        function getFilteredFines() {
+            return allFinesCache.filter(f => {
+                if (currentStatus === 'unpaid' && f.status === 'paid') return false;
+                if (currentStatus === 'paid' && f.status !== 'paid') return false;
+                if (currentKeyword) {
+                    const kw = currentKeyword.toLowerCase();
+                    const text = `${f.id} ${f.userId} ${f.borrowId} ${f.username || ''} ${f.bookTitle || ''}`.toLowerCase();
+                    if (!text.includes(kw)) return false;
+                }
+                return true;
+            });
+        }
+
+        function renderPagination(pageData) {
+            const container = document.getElementById('pagination');
+            if (!container) return;
+            const { total, page, totalPages } = pageData;
+            if (totalPages <= 1) { container.innerHTML = `<div class="pagination-info">共 ${total} 条</div>`; return; }
+            let html = `<div class="pagination-info">共 ${total} 条，第 ${page}/${totalPages} 页</div>`;
+            html += `<div class="pagination-btns">`;
+            html += `<button class="btn btn-sm" ${page <= 1 ? 'disabled' : ''} onclick="changePage(${page - 1})">上一页</button>`;
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === page) {
+                    html += `<button class="btn btn-sm btn-primary">${i}</button>`;
+                } else {
+                    html += `<button class="btn btn-sm" onclick="changePage(${i})">${i}</button>`;
+                }
+            }
+            html += `<button class="btn btn-sm" ${page >= totalPages ? 'disabled' : ''} onclick="changePage(${page + 1})">下一页</button>`;
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        function changePage(page) {
+            currentPage = page;
+            applyAndRender();
+        }
+
+        function applyAndRender() {
+            const list = getFilteredFines();
+            const total = list.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const pageList = list.slice(start, start + pageSize);
+            renderFines(pageList);
+            renderPagination({ total, page: currentPage, totalPages });
+            updateStats();
+        }
+
+        // 实时统计：未缴金额 / 未缴数 / 已缴数（基于全量缓存，不受标签页/搜索影响）
+        function updateStats() {
+            let unpaidAmount = 0, unpaidCount = 0, paidCount = 0;
+            for (const f of allFinesCache) {
+                if (f.status === 'paid') {
+                    paidCount++;
+                } else {
+                    unpaidCount++;
+                    unpaidAmount += Number(f.amount) || 0;
+                }
+            }
+            const a = document.getElementById('statUnpaidAmount');
+            const u = document.getElementById('statUnpaidCount');
+            const p = document.getElementById('statPaidCount');
+            if (a) a.textContent = '¥' + unpaidAmount.toFixed(2);
+            if (u) u.textContent = unpaidCount;
+            if (p) p.textContent = paidCount;
+        }
+
+        function renderFines(fines) {
+            const tbody = document.getElementById('finesTableBody');
+            if (!fines.length) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#7f8c8d;">暂无数据</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = fines.map(f => {
+                const isPaid = f.status === 'paid';
+                const amount = f.amount == null ? '0.00' : Number(f.amount).toFixed(2);
+                const overdueDays = f.overdueDays || 0;
+                // 优先用后端 username，否则前端反查（防御性，正常不会走这里）
+                const userLabel = f.username || (f.user ? (f.user.username || f.user.name || f.userId) : (f.userId || ''));
+                const bookLabel = f.bookTitle || (f.borrowRecord && f.borrowRecord.book ? f.borrowRecord.book.title : '');
+                return `
+                <tr data-status="${isPaid ? 'paid' : 'unpaid'}">
+                    <td>${f.id}</td>
+                    <td>${userLabel}</td>
+                    <td title="${f.borrowId ? '借阅ID ' + f.borrowId : ''}${bookLabel ? ' · ' + bookLabel : ''}">${f.borrowId || '—'}</td>
+                    <td>${overdueDays > 0 ? overdueDays + ' 天' : '—'}</td>
+                    <td>¥${amount}</td>
+                    <td><span class="status-badge ${isPaid ? 'status-active' : ''}" style="${isPaid ? '' : 'background:#f8d7da;color:#721c24;'}">${isPaid ? '已缴纳' : '未缴纳'}</span></td>
+                    <td>${f.paidAt || '—'}</td>
+                    <td>
+                        ${!isPaid
+                            ? `<button class="btn btn-success btn-sm" onclick="payFine(${f.id})">确认缴纳</button>`
+                            : '<span style="color:#7f8c8d;">—</span>'}
+                    </td>
+                </tr>
+            `;
+            }).join('');
+        }
+
+        // --- 确认缴纳 ---
+        async function payFine(id) {
+            if (!confirm('确认该读者已缴纳罚金？')) return;
+            try {
+                const res = await fetch(`/api/fine/pay/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    loadFines(currentPage, currentStatus, currentKeyword);
+                } else {
+                    alert('确认缴纳失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('确认缴纳失败: ' + err.message);
+            }
+        }
+
+        // --- 标签页筛选 ---
+        function filterFines(status) {
+            if (typeof status === 'string') {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                if (status !== 'all') {
+                    document.querySelectorAll('.tab').forEach(t => {
+                        if (t.textContent.includes(status === 'unpaid' ? '未缴纳' : '已缴纳')) t.classList.add('active');
+                    });
+                } else {
+                    document.querySelectorAll('.tab')[2].classList.add('active');
+                }
+                currentStatus = status;
+                currentPage = 1;
+                applyAndRender();
+                return;
+            }
+            // 搜索输入（无参数）- 重新过滤
+            currentKeyword = document.getElementById('fineSearch').value;
+            currentPage = 1;
+            applyAndRender();
+        }
+
+        document.getElementById('fineSearch').addEventListener('input', () => filterFines());
+
+        loadFines();
+    </script>
+</body>
+</html>

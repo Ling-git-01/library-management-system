@@ -68,6 +68,20 @@ public class UserService implements UserDetailsService {
         return userRepo.save(user);
     }
 
+    // 修改用户最大借阅上限
+    @Transactional
+    public User updateMaxBorrowCount(Integer id, Integer maxBorrowCount) {
+        if (maxBorrowCount == null) {
+            throw new RuntimeException("最大借阅数不能为空");
+        }
+        if (maxBorrowCount < 0) {
+            throw new RuntimeException("最大借阅数不能为负数");
+        }
+        User user = userRepo.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
+        user.setMaxBorrowCount(maxBorrowCount);
+        return userRepo.save(user);
+    }
+
     // 重置密码
     @Transactional
     public void resetPassword(Integer id, String newPwd) {

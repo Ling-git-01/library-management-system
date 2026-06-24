@@ -14,6 +14,8 @@ public interface BorrowRecordRepository extends JpaRepository<BorrowRecord,Integ
     List<BorrowRecord> findByUserId(Integer userId);
     // 查询未归还的借阅
     List<BorrowRecord> findByUserIdAndStatus(Integer userId, BorrowRecord.Status status);
+    // 按状态查询所有借阅记录（如所有未归还的）
+    List<BorrowRecord> findByStatus(BorrowRecord.Status status);
     // 检查图书是否被该用户借出未还
     boolean existsByUserIdAndBookIdAndStatus(Integer userId, Integer bookId, BorrowRecord.Status status);
     // 查询逾期未还记录
