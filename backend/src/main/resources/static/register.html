@@ -1,0 +1,170 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图书馆管理系统 - 注册</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Microsoft YaHei', sans-serif;
+  background: url('images/bg-library.jpg') no-repeat center center fixed;
+  background-size: cover;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.register-box {
+  background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  width: 440px; padding: 40px;
+}
+h2 { text-align: center; color: #333; margin-bottom: 24px; font-size: 24px; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; margin-bottom: 6px; color: #555; font-size: 14px; font-weight: 500; }
+.form-group input {
+  width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 15px; outline: none; transition: border-color .3s;
+}
+.form-group input:focus { border-color: #667eea; }
+.form-group .hint { font-size: 12px; color: #999; margin-top: 4px; }
+.btn {
+  width: 100%; padding: 13px; background: #667eea; color: #fff; border: none;
+  border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;
+  transition: background .3s; margin-top: 8px;
+}
+.btn:hover { background: #5a6fd6; }
+.links { text-align: center; margin-top: 18px; font-size: 14px; color: #888; }
+.links a { color: #667eea; text-decoration: none; cursor: pointer; }
+.links a:hover { text-decoration: underline; }
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 28px;
+  border-radius: 8px; color: #fff; font-size: 14px; z-index: 9999; display: none;
+  animation: fadeIn .3s;
+}
+.toast.error { background: #f56c6c; }
+.toast.success { background: #67c23a; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+</style>
+</head>
+<body>
+<div class="register-box">
+  <h2>📚 注册读者账号</h2>
+  <form id="registerForm" onsubmit="handleRegister(event)">
+    <div class="form-group">
+      <label>用户名 *</label>
+      <input type="text" id="username" placeholder="请输入用户名" required minlength="2" maxlength="50">
+    </div>
+    <div class="form-group">
+      <label>密码 *</label>
+      <div style="position:relative;">
+        <input type="password" id="password" placeholder="请输入密码" required minlength="6" style="padding-right:44px;">
+        <span onclick="togglePwd('password', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;user-select:none;">👁️</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>确认密码 *</label>
+      <div style="position:relative;">
+        <input type="password" id="confirmPassword" placeholder="请再次输入密码" required style="padding-right:44px;">
+        <span onclick="togglePwd('confirmPassword', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;user-select:none;">👁️</span>
+      </div>
+      <div id="pwdMismatchHint" class="hint" style="color:#f56c6c;display:none;">⚠️ 两次密码不一致</div>
+    </div>
+    <div class="form-group">
+      <label>真实姓名</label>
+      <input type="text" id="realName" placeholder="请输入真实姓名">
+    </div>
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="email" placeholder="请输入邮箱地址">
+    </div>
+    <div class="form-group">
+      <label>手机号 *</label>
+      <input type="tel" id="phone" placeholder="请输入手机号" required>
+    </div>
+    <button type="submit" class="btn">注 册</button>
+  </form>
+  <div class="links">
+    已有账号？<a href="login.html">去登录</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = 'http://localhost:8080/api';
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type; t.style.display = 'block';
+  setTimeout(function(){ t.style.display = 'none'; }, 3000);
+}
+
+// 显示/隐藏密码
+function togglePwd(inputId, el) {
+  var inp = document.getElementById(inputId);
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    el.textContent = '🙈';
+  } else {
+    inp.type = 'password';
+    el.textContent = '👁️';
+  }
+}
+
+// 实时检查密码一致性
+document.addEventListener('DOMContentLoaded', function() {
+  var pwd = document.getElementById('password');
+  var cpwd = document.getElementById('confirmPassword');
+  function checkMatch() {
+    var hint = document.getElementById('pwdMismatchHint');
+    if (cpwd.value && pwd.value !== cpwd.value) {
+      hint.style.display = 'block';
+    } else {
+      hint.style.display = 'none';
+    }
+  }
+  pwd.addEventListener('input', checkMatch);
+  cpwd.addEventListener('input', checkMatch);
+});
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+  const realName = document.getElementById('realName').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+
+  if (!username || !password) { showToast('用户名和密码不能为空', 'error'); return; }
+  if (password !== confirmPassword) { showToast('两次密码输入不一致', 'error'); return; }
+  if (username.length < 2) { showToast('用户名至少2个字符', 'error'); return; }
+  if (password.length < 6) { showToast('密码至少6个字符', 'error'); return; }
+  if (!phone) { showToast('请输入手机号', 'error'); return; }
+  if (!/^1[3-9]\d{9}$/.test(phone)) { showToast('手机号格式不正确（11位手机号）', 'error'); return; }
+
+  try {
+    const body = { username: username, password: password, role: 'reader' };
+    if (realName) body.realName = realName;
+    if (email) body.email = email;
+    if (phone) body.phone = phone;
+
+    const resp = await fetch(API_BASE + '/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      showToast('注册成功，即将跳转到登录页', 'success');
+      setTimeout(function(){ location.href = 'login.html'; }, 1200);
+    } else {
+      showToast(data.msg || '注册失败', 'error');
+    }
+  } catch (err) {
+    showToast('网络错误，请检查后端服务', 'error');
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1350 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图书馆管理系统 - 个人中心</title>
+<!-- 管理员拦截：admin 访问读者端时强制跳转回管理页 -->
+<script>
+(function(){
+  try {
+    var user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user && user.role === 'admin') {
+      var adminToken = localStorage.getItem('admin_token');
+      if (adminToken) {
+        location.replace('/api/admin/dashboard.html');
+        return;
+      }
+    }
+  } catch(e) {}
+})();
+</script>
+<style>
+* { margin:0; padding:0; box-sizing: border-box; }
+body { font-family: 'Microsoft YaHei', sans-serif; background: url('images/bg-library.jpg') no-repeat center center fixed; background-size: cover; min-height: 100vh; position: relative; }
+body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.85); z-index: -1; }
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 16px 0; color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.15);
+}
+.header-inner { max-width: 1100px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; }
+.header-inner h1 { font-size: 20px; }
+.header-inner a { color: #fff; text-decoration: none; font-size: 15px; cursor: pointer; }
+.header-inner a:hover { opacity: .8; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+.tabs { display: flex; gap: 0; margin-bottom: 20px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.tab {
+  flex: 1; text-align: center; padding: 14px 0; cursor: pointer; font-size: 15px;
+  color: #666; font-weight: 500; transition: all .3s; border-bottom: 3px solid transparent;
+}
+.tab:hover { color: #667eea; }
+.tab.active { color: #667eea; border-bottom-color: #667eea; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.card {
+  background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: #f8f9fc; padding: 12px; text-align: left; color: #555; font-weight: 600; border-bottom: 2px solid #eee; }
+td { padding: 12px; border-bottom: 1px solid #f0f0f0; color: #444; }
+tr:hover { background: #fafafa; }
+.btn-sm {
+  padding: 5px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none;
+  transition: all .3s; font-weight: 500;
+}
+.btn-green { background: #43a047; color: #fff; }
+.btn-green:hover { background: #388e3c; }
+.btn-green:disabled { background: #ccc; cursor: not-allowed; }
+.btn-red { background: #e53935; color: #fff; }
+.btn-red:hover { background: #c62828; }
+.btn-red:disabled { background: #ccc; cursor: not-allowed; }
+.btn-blue { background: #667eea; color: #fff; }
+.btn-blue:hover { background: #5a6fd6; }
+.btn-blue:disabled { background: #ccc; cursor: not-allowed; }
+
+/* 状态标签 */
+.status-returned { color: #43a047; font-weight: 600; }
+.status-borrowing { color: #667eea; font-weight: 600; }
+.status-overdue { color: #e53935; font-weight: 600; }
+.status-pending { color: #ff9800; font-weight: 600; }
+.status-cancelled { color: #999; font-weight: 400; }
+
+/* 删除按钮 */
+.review-del-btn {
+  padding: 3px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  border: 1px solid #f56c6c; color: #f56c6c; background: transparent;
+  transition: all .2s;
+}
+.review-del-btn:hover { background: #f56c6c; color: #fff; }
+
+.empty { text-align: center; padding: 40px; color: #bbb; font-size: 15px; }
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 28px;
+  border-radius: 8px; color: #fff; font-size: 14px; z-index: 9999; display: none;
+  animation: fadeIn .3s;
+}
+.toast.error { background: #f56c6c; }
+.toast.success { background: #67c23a; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+.sort-hint { font-size: 12px; color: #999; margin-bottom: 12px; }
+
+/* 通知角标（消息通知 tab） */
+.notif-badge-profile {
+  display: inline-block; background: #f56c6c; color: #fff; font-size: 11px;
+  min-width: 16px; height: 16px; line-height: 16px; text-align: center;
+  border-radius: 8px; margin-left: 4px; padding: 0 4px; vertical-align: top;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-inner">
+    <h1>👤 个人中心</h1>
+    <div style="display:flex;gap:20px;align-items:center;">
+      <a href="index.html">← 返回首页</a>
+      <a onclick="doLogout()" style="color:#ffeb3b;">退出登录</a>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('borrows', this)">借阅记录</div>
+    <div class="tab" onclick="switchTab('reservations', this)">我的预约</div>
+    <div class="tab" onclick="switchTab('fines', this)">罚金记录</div>
+    <div class="tab" onclick="switchTab('reviews', this)">我的书评</div>
+    <div class="tab" onclick="switchTab('notifications', this)">📢 消息通知<span class="notif-badge-profile" id="notifBadgeProfile" style="display:none;">0</span></div>
+  </div>
+
+  <div id="tab-borrows" class="tab-content active">
+    <div class="sort-hint">📌 未归还的书籍显示在最前面（按借阅时间排序）</div>
+    <div class="card" id="borrowTable">加载中...</div>
+  </div>
+  <div id="tab-reservations" class="tab-content">
+    <div class="card" id="reserveTable">加载中...</div>
+  </div>
+  <div id="tab-fines" class="tab-content">
+    <div class="card" id="fineTable">加载中...</div>
+  </div>
+  <div id="tab-reviews" class="tab-content">
+    <div class="card" id="reviewTable">加载中...</div>
+  </div>
+  <div id="tab-notifications" class="tab-content">
+    <div class="card" id="notificationTable">加载中...</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var API_BASE = 'http://localhost:8080/api';
+var currentTab = 'borrows';
+var borrowData = [], reserveData = [], fineData = [], reviewData = [];
+
+// 通用字段兼容：尝试多个字段名，返回第一个有效值
+function v(obj) {
+  if (!obj) return undefined;
+  for (var i = 1; i < arguments.length; i++) {
+    var k = arguments[i];
+    if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
+  }
+  return undefined;
+}
+
+function getUserId() {
+  try {
+    var u = JSON.parse(localStorage.getItem('user') || '{}');
+    return u.id || null;
+  } catch(e) { return null; }
+}
+function getToken() { return localStorage.getItem('token'); }
+
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type; t.style.display = 'block';
+  setTimeout(function(){ t.style.display = 'none'; }, 3000);
+}
+
+function doLogout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  location.href = 'login.html';
+}
+
+function checkAuth() {
+  if (!getToken()) { location.href = 'login.html'; return false; }
+  return true;
+}
+
+function isReviewAnonymous(reviewId) {
+  try {
+    var list = JSON.parse(localStorage.getItem('anonymousReviews') || '[]');
+    return list.indexOf(String(reviewId)) !== -1 || list.indexOf(reviewId) !== -1;
+  } catch (e) { return false; }
+}
+
+// 切换 Tab（每次切换都实时刷新数据）
+// 刷新当前 Tab 数据
+function refreshCurrentTab() {
+  var tabEl = document.querySelector('.tab.active');
+  if (tabEl) {
+    var tab = currentTab || 'borrows';
+    switchTab(tab, tabEl);
+  }
+}
+
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(c){ c.classList.remove('active'); });
+  el.classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  // 切换到消息通知 tab 时，不再自动重置未读计数；
+  // 用户可点击“标记全部已读”按钮或点击单条消息来手动标记已读。
+  // if (tab === 'notifications') { resetUnreadCount(); }
+
+  // 每次切换都重新从服务器获取最新数据
+  if (tab === 'borrows') loadBorrows();
+  else if (tab === 'reservations') loadReservations();
+  else if (tab === 'fines') loadFines();
+  else if (tab === 'reviews') loadReviews();
+  else if (tab === 'notifications') loadNotifications();
+}
+
+/* ==================== 借阅记录 ==================== */
+async function loadBorrows() {
+  var uid = getUserId();
+  if (!uid) return;
+  var tableEl = document.getElementById('borrowTable');
+  tableEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ 正在加载最新数据...</div>';
+  try {
+    var resp = await fetch(API_BASE + '/borrow/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      borrowData = data.data || [];
+      renderBorrows();
+    } else {
+      tableEl.innerHTML = '<div class="empty">加载失败</div>';
+    }
+  } catch (e) {
+    tableEl.innerHTML = '<div class="empty">网络错误，请重试</div>';
+  }
+}
+
+// 判断借阅状态（兼容 camelCase 和 snake_case 字段名）
+// 后端 BorrowRecord 实体：status 枚举值为 borrowing / returned / overdue
+function getBorrowStatus(r) {
+  var bStatus = v(r, 'status') || '';
+  var returnDate = v(r, 'returnDate', 'return_date', 'returnTime', 'return_time');
+  var overdue = v(r, 'overdue', 'isOverdue');
+
+  // 扩展已归还判断：覆盖各种后端可能返回的状态值
+  var statusLower = String(bStatus).toLowerCase();
+  var isReturned = (statusLower === 'returned' || statusLower === 'return' ||
+                    statusLower === 'closed' || statusLower === 'complete' || statusLower === 'completed' ||
+                    bStatus === 1 || bStatus === '1' ||
+                    statusLower === 'finished' || statusLower === 'done' || returnDate);
+  if (isReturned) {
+    return { cls: 'status-returned', text: '已归还', returned: true };
+  }
+
+  // 逾期：有 overdue 标记
+  if (overdue === true || overdue === 1 || overdue === 'true' || overdue === 'yes') {
+    return { cls: 'status-overdue', text: '已逾期', returned: false };
+  }
+
+  // 正向判断：只有明确是"借阅中"才标记为借阅中（防止非标准状态误判）
+  if (statusLower === 'borrowing' || statusLower === 'borrow' ||
+      statusLower === 'borrowed' || statusLower === 'active' || statusLower === 'in_use' ||
+      statusLower === 'overdue') {
+    return { cls: 'status-borrowing', text: '借阅中', returned: false };
+  }
+
+  // 其他未知状态：不假设为借阅中（保守处理，标记为未知而非借阅中）
+  return { cls: 'status-cancelled', text: bStatus || '未知', returned: true };
+}
+
+// 解析借阅时间用于排序（兼容 borowDate / borow_date / borowTime / borow_time）
+function parseBorrowTime(r) {
+  var bt = v(r, 'borrowDate', 'borrow_date', 'borrowTime', 'borrow_time') || '';
+  if (!bt) return 0;
+  var t = new Date(bt).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function renderBorrows() {
+  var container = document.getElementById('borrowTable');
+  if (borrowData.length === 0) {
+    container.innerHTML = '<div class="empty">暂无借阅记录</div>';
+    return;
+  }
+
+  var sorted = borrowData.slice().sort(function(a, b) {
+    var sa = getBorrowStatus(a);
+    var sb = getBorrowStatus(b);
+    // 未归还(0)排在已归还(1)前面
+    if (sa.returned !== sb.returned) { return sa.returned ? 1 : -1; }
+    // 同组按时间倒序（最近借的在前面）
+    var ta = parseBorrowTime(a);
+    var tb = parseBorrowTime(b);
+    return tb - ta;
+  });
+
+  // 表格显示：图书、借阅时间、归还时间、操作
+  var html = '<table><thead><tr>' +
+    '<th>图书</th><th>借阅时间</th><th>归还时间</th><th>操作</th>' +
+    '</tr></thead><tbody>';
+
+  sorted.forEach(function(r) {
+    var statusInfo = getBorrowStatus(r);
+    var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
+    var borrowDate = v(r, 'borrowDate', 'borrow_date', 'borrowTime', 'borrow_time');
+    var returnDate = v(r, 'returnDate', 'return_date', 'returnTime', 'return_time');
+    var dueDate = v(r, 'dueDate', 'due_date', 'dueTime', 'due_time');
+
+    html += '<tr>';
+    html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+    html += '<td>' + (borrowDate ? borrowDate.substring(0, 19).replace('T', ' ') : '-') + '</td>';
+    // 归还时间：已归还时显示日期时间，否则显示应还时间（提示未归还）
+    if (returnDate) {
+      html += '<td>' + returnDate.substring(0, 19).replace('T', ' ') + '</td>';
+    } else {
+      var dueText = dueDate ? dueDate.substring(0, 19).replace('T', ' ') : '未知';
+      html += '<td><span style="color:#667eea;">应还：' + dueText + '</span></td>';
+    }
+    // 操作列：未归还时显示归还按钮
+    html += '<td>';
+    if (!statusInfo.returned) {
+      html += '<button class="btn-sm btn-blue" onclick="returnBook(' + r.id + ')">🔄 归还</button>';
+    } else {
+      html += '<span style="color:#43a047;font-size:13px;">✅ 已归还</span>';
+    }
+    html += '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function returnBook(borrowId) {
+  if (!confirm('确定要归还这本书吗？')) return;
+  // 找到借阅记录对应的 bookId，用于归还后自动取消预约
+  var record = borrowData.find(function(r) { return r.id == borrowId; });
+  var bookId = null;
+  if (record) {
+    bookId = v(record, 'bookId', 'book_id');
+    if ((bookId === undefined || bookId === null) && record.book && record.book.id != null) bookId = record.book.id;
+  }
+  try {
+    var resp = await fetch(API_BASE + '/borrow/return/' + borrowId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('还书成功 ✅', 'success');
+      // 自动取消该书的预约（借阅并归还后，本次预约周期结束）
+      if (bookId) await autoCancelReservationAfterReturn(bookId);
+      loadBorrows();
+      // 如果在预约 tab，刷新预约列表
+      if (currentTab === 'reservations') loadReservations();
+    } else { showToast(data.msg || '还书失败', 'error'); }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+// 归还成功后自动取消该书的预约
+async function autoCancelReservationAfterReturn(bookId) {
+  var uid = getUserId();
+  if (!uid) return;
+  try {
+    var resp = await fetch(API_BASE + '/reserve/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (!data.success || !data.data) return;
+    var reservation = data.data.find(function(r) {
+      var bid = v(r, 'bookId', 'book_id');
+      if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+      var st = String(v(r, 'status') || '').toUpperCase();
+      return String(bid) === String(bookId) && (st === 'PENDING' || st === 'FULFILLED');
+    });
+    if (!reservation) return;
+    await fetch(API_BASE + '/reserve/cancel/' + reservation.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
+    });
+    // 清理本地预约标记
+    try {
+      var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+      var idx = reIds.indexOf(Number(bookId));
+      if (idx !== -1) reIds.splice(idx, 1);
+      localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+    } catch(e) {}
+    // 清理本地预约时间戳
+    try {
+      var resKey = 'library_reserve_times_' + (uid || 'default');
+      var allTimes = JSON.parse(localStorage.getItem(resKey) || '{}');
+      delete allTimes[String(bookId)];
+      localStorage.setItem(resKey, JSON.stringify(allTimes));
+    } catch(e) {}
+  } catch (e) {}
+}
+
+/* ==================== 我的预约 ==================== */
+async function loadReservations() {
+  var uid = getUserId();
+  if (!uid) return;
+  var tableEl = document.getElementById('reserveTable');
+  tableEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ 正在加载最新数据...</div>';
+  try {
+    // 每次重新加载借阅数据，确保状态准确
+    try {
+      var brResp = await fetch(API_BASE + '/borrow/user/' + uid, {
+        headers: { 'Authorization': 'Bearer ' + getToken() }
+      });
+      var brData = await brResp.json();
+      if (brData.success) borrowData = brData.data || [];
+    } catch (e) {}
+    var resp = await fetch(API_BASE + '/reserve/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      reserveData = data.data || [];
+      renderReservations();
+    } else {
+      tableEl.innerHTML = '<div class="empty">加载失败</div>';
+    }
+  } catch (e) {
+    tableEl.innerHTML = '<div class="empty">网络错误</div>';
+  }
+}
+
+function renderReservations() {
+  var container = document.getElementById('reserveTable');
+  
+  // 加载本地独立预约时间戳（每次预约对应一个独立事件）
+  var localReserveTimes = {};
+  try {
+    var uid2 = getUserId();
+    var resKey = 'library_reserve_times_' + (uid2 || 'default');
+    localReserveTimes = JSON.parse(localStorage.getItem(resKey) || '{}');
+  } catch(e) {}
+  
+  // 将后端预约记录按 bookId 分组
+  var backendByBook = {};
+  reserveData.forEach(function(r) {
+    var bid = v(r, 'bookId', 'book_id');
+    if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+    bid = String(bid || '');
+    if (!bid) return;
+    if (!backendByBook[bid]) backendByBook[bid] = [];
+    backendByBook[bid].push(r);
+  });
+  
+  // 以本地时间戳为主数据源构建独立事件行
+  var rows = [];
+  Object.keys(localReserveTimes).forEach(function(bid) {
+    var times = localReserveTimes[bid];
+    var backends = backendByBook[bid] || [];
+    times.forEach(function(t, idx) {
+      rows.push({
+        bookId: bid,
+        time: t,
+        seq: idx + 1,
+        backendRecord: idx < backends.length ? backends[idx] : null,
+        hasBackend: idx < backends.length
+      });
+    });
+  });
+  
+  // 补充没有本地时间戳但有后端记录的预约（其他设备产生）
+  Object.keys(backendByBook).forEach(function(bid) {
+    if (!localReserveTimes[bid]) {
+      backendByBook[bid].forEach(function(r, idx) {
+        rows.push({
+          bookId: bid,
+          time: v(r, 'reserveDate', 'reserve_date', 'reserveTime', 'reserve_time', 'createdAt', 'createTime', 'create_time'),
+          seq: idx + 1,
+          backendRecord: r,
+          hasBackend: true
+        });
+      });
+    }
+  });
+  
+  // 判断某条预约是否已不需要保留：
+  // 1) CANCELLED 直接删除
+  // 2) FULFILLED 且已借阅并已归还的删除（完成借阅-归还闭环）
+  //    FULFILLED 已借阅但未归还的保留，FULFILLED 未借阅的保留
+  function isUnneededReservation(row) {
+    var rec = row.backendRecord;
+    var rStatus;
+    if (rec) {
+      rStatus = String(v(rec, 'status') || '').toUpperCase();
+    } else {
+      var backendsForStatus = backendByBook[row.bookId] || [];
+      var foundBackend = null;
+      for (var bsi = 0; bsi < backendsForStatus.length; bsi++) {
+        if (backendsForStatus[bsi].id != null) {
+          foundBackend = backendsForStatus[bsi];
+          break;
+        }
+      }
+      rStatus = foundBackend ? String(v(foundBackend, 'status') || '').toUpperCase() : 'PENDING';
+    }
+
+    // 已取消的预约直接删除
+    if (rStatus === 'CANCELLED') return true;
+
+    // FULFILLED 只有已借阅并归还的才删除；借阅中或未借阅的保留
+    if (rStatus === 'FULFILLED') {
+      var bs = findBorrowForBook(row.bookId, row.time);
+      if (!bs || !bs.status) {
+        var fallbackReturned = null;
+        var fallbackBorrowing = null;
+        var fallbackReserveTs = row.time ? new Date(row.time).getTime() : 0;
+        if (isNaN(fallbackReserveTs)) fallbackReserveTs = 0;
+        for (var fbi = 0; fbi < borrowData.length; fbi++) {
+          var fBid = v(borrowData[fbi], 'bookId', 'book_id');
+          if ((fBid === undefined || fBid === null) && borrowData[fbi].book && borrowData[fbi].book.id != null) fBid = borrowData[fbi].book.id;
+          if (String(fBid) === row.bookId) {
+            var fbs = getBorrowStatus(borrowData[fbi]);
+            var fBorrowTs = parseBorrowTime(borrowData[fbi]);
+            if (!fbs.returned) { fallbackBorrowing = { record: borrowData[fbi], status: fbs }; break; }
+            if (!fallbackReturned && (fallbackReserveTs <= 0 || (fBorrowTs > 0 && fBorrowTs >= fallbackReserveTs))) {
+              fallbackReturned = { record: borrowData[fbi], status: fbs };
+            }
+          }
+        }
+        if (!bs || !bs.status) { bs = fallbackBorrowing || fallbackReturned; }
+      }
+      // 只有已借阅并归还的预约才删除
+      return bs && bs.status && bs.status.returned;
+    }
+
+    // PENDING 保留
+    return false;
+  }
+
+  // 过滤掉已不需要保留的预约，并清理本地对应时间戳
+  var closedLoopTimesByBook = {};
+  rows = rows.filter(function(row) {
+    if (isUnneededReservation(row)) {
+      if (!closedLoopTimesByBook[row.bookId]) closedLoopTimesByBook[row.bookId] = [];
+      closedLoopTimesByBook[row.bookId].push(row.time);
+      return false;
+    }
+    return true;
+  });
+  try {
+    var uid3 = getUserId();
+    var resKey2 = 'library_reserve_times_' + (uid3 || 'default');
+    var storedTimes = JSON.parse(localStorage.getItem(resKey2) || '{}');
+    var changed = false;
+    Object.keys(closedLoopTimesByBook).forEach(function(bid) {
+      if (storedTimes[bid]) {
+        var removeTimes = closedLoopTimesByBook[bid];
+        var originalLen = storedTimes[bid].length;
+        storedTimes[bid] = storedTimes[bid].filter(function(t) { return removeTimes.indexOf(t) === -1; });
+        if (storedTimes[bid].length === 0) delete storedTimes[bid];
+        if (storedTimes[bid].length !== originalLen || !storedTimes[bid]) changed = true;
+      }
+    });
+    if (changed) localStorage.setItem(resKey2, JSON.stringify(storedTimes));
+  } catch(e) {}
+
+  // 按时间倒序排列
+  rows.sort(function(a, b) {
+    var ta = a.time ? new Date(a.time).getTime() : 0;
+    var tb = b.time ? new Date(b.time).getTime() : 0;
+    if (isNaN(ta)) ta = 0;
+    if (isNaN(tb)) tb = 0;
+    return tb - ta;
+  });
+  
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="empty">暂无预约记录</div>';
+    return;
+  }
+  
+  // 查找某本书对应的借阅记录（优先活跃中，其次仅当借阅发生在预约之后才匹配已归还）
+  // reserveTime: 预约时间戳，用于确保只匹配本次预约周期内的借阅
+  function findBorrowForBook(bid, reserveTime) {
+    var reserveTs = reserveTime ? new Date(reserveTime).getTime() : 0;
+    if (isNaN(reserveTs)) reserveTs = 0;
+    var bestReturned = null;
+    var bestBorrowTs = 0;
+    for (var i = 0; i < borrowData.length; i++) {
+      var bBid = v(borrowData[i], 'bookId', 'book_id');
+      if ((bBid === undefined || bBid === null) && borrowData[i].book && borrowData[i].book.id != null) bBid = borrowData[i].book.id;
+      if (String(bBid) === bid) {
+        var bs = getBorrowStatus(borrowData[i]);
+        var borrowTs = parseBorrowTime(borrowData[i]);
+        // 活跃借阅（未归还）始终优先返回
+        if (!bs.returned) { return { record: borrowData[i], status: bs }; }
+        // 已归还记录：仅当预约时间已知且借阅发生在预约之后才纳入考虑
+        // 避免把预约前的旧归还记录误认为是本次预约的结果
+        if (reserveTs > 0 && borrowTs > 0 && borrowTs >= reserveTs && borrowTs > bestBorrowTs) {
+          bestBorrowTs = borrowTs;
+          bestReturned = { record: borrowData[i], status: bs };
+        }
+      }
+    }
+    return bestReturned;
+  }
+  
+  var html = '<table><thead><tr><th>图书</th><th>预约时间</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+  
+  rows.forEach(function(row) {
+    var rec = row.backendRecord;
+    // 确定预约状态：优先用索引匹配的后端记录，否则查找该书任意后端记录
+    var rStatus;
+    if (rec) {
+      rStatus = String(v(rec, 'status') || '').toUpperCase();
+    } else {
+      var backendsForStatus = backendByBook[row.bookId] || [];
+      var foundBackend = null;
+      for (var bsi = 0; bsi < backendsForStatus.length; bsi++) {
+        if (backendsForStatus[bsi].id != null) {
+          foundBackend = backendsForStatus[bsi];
+          break;
+        }
+      }
+      rStatus = foundBackend ? String(v(foundBackend, 'status') || '').toUpperCase() : 'PENDING';
+    }
+    var bookTitle = '图书#' + row.bookId;
+    if (rec && rec.book && rec.book.title) { bookTitle = rec.book.title; }
+    else {
+      for (var bi = 0; bi < borrowData.length; bi++) {
+        var bBid2 = v(borrowData[bi], 'bookId', 'book_id');
+        if ((bBid2 === undefined || bBid2 === null) && borrowData[bi].book && borrowData[bi].book.id != null) bBid2 = borrowData[bi].book.id;
+        if (String(bBid2) === row.bookId) {
+          var bTtl = v(borrowData[bi].book, 'title');
+          if (bTtl) { bookTitle = bTtl; break; }
+        }
+      }
+    }
+    
+    var stCls, stText, canCancel = false;
+    
+    if (rStatus === 'CANCELLED') {
+      stCls = 'status-cancelled'; stText = '已取消';
+    } else {
+      // PENDING 和 FULFILLED 都检查借阅记录判断是否已借阅/已归还
+      var bs = findBorrowForBook(row.bookId, row.time);
+      // 增强回退：若 findBorrowForBook 因为时间戳无效等原因未找到，
+      // 直接遍历 borrowData 按 bookId 匹配（宽匹配），避免状态回退为"待借阅"
+      if (!bs || !bs.status) {
+        var fallbackReturned = null;
+        var fallbackReserveTs = row.time ? new Date(row.time).getTime() : 0;
+        if (isNaN(fallbackReserveTs)) fallbackReserveTs = 0;
+        for (var fbi = 0; fbi < borrowData.length; fbi++) {
+          var fBid = v(borrowData[fbi], 'bookId', 'book_id');
+          if ((fBid === undefined || fBid === null) && borrowData[fbi].book && borrowData[fbi].book.id != null) fBid = borrowData[fbi].book.id;
+          if (String(fBid) === row.bookId) {
+            var fbs = getBorrowStatus(borrowData[fbi]);
+            var fBorrowTs = parseBorrowTime(borrowData[fbi]);
+            if (!fbs.returned) { bs = { record: borrowData[fbi], status: fbs }; break; }
+            // 已归还记录：只有当预约时间未知或借阅发生在预约之后才纳入考虑
+            // 避免旧借阅记录（借阅发生在预约之前）错误覆盖新的预约状态
+            if (!fallbackReturned && (fallbackReserveTs <= 0 || (fBorrowTs > 0 && fBorrowTs >= fallbackReserveTs))) {
+              fallbackReturned = { record: borrowData[fbi], status: fbs };
+            }
+          }
+        }
+        if (!bs || !bs.status) { bs = fallbackReturned; }
+      }
+      if (bs && bs.status) {
+        if (bs.status.returned) {
+          stCls = 'status-returned'; stText = '借阅已归还';
+        } else {
+          stCls = 'status-borrowing'; stText = '已借阅';
+        }
+      } else if (rStatus === 'FULFILLED') {
+        // FULFILLED 但无借阅记录 → 可借阅但用户尚未借
+        stCls = 'status-borrowing'; stText = '可借阅';
+      } else if (rStatus === 'PENDING') {
+        stCls = 'status-pending'; stText = '待借阅';
+        canCancel = true;
+      } else {
+        stCls = 'status-cancelled'; stText = rStatus || '未知';
+      }
+    }
+    
+    var showCancel = canCancel && rec && rec.id != null;
+    // 如果 rec 为 null 或没有 id，尝试从后端记录中查找该书的任意 PENDING 预约
+    var cancelRec = rec;
+    if (canCancel && (!cancelRec || cancelRec.id == null)) {
+      var backendsForBook = backendByBook[row.bookId] || [];
+      for (var bi = 0; bi < backendsForBook.length; bi++) {
+        if (String(v(backendsForBook[bi], 'status') || '').toUpperCase() === 'PENDING' && backendsForBook[bi].id != null) {
+          cancelRec = backendsForBook[bi];
+          showCancel = true;
+          break;
+        }
+      }
+    }
+    if (showCancel && (!cancelRec || cancelRec.id == null)) showCancel = false;
+    
+    html += '<tr>';
+    html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+    html += '<td>' + formatLocalTime(row.time) + '</td>';
+    html += '<td><span class="' + stCls + '">' + stText + '</span></td>';
+    html += '<td>';
+    if (showCancel) {
+      html += '<button class="btn-sm btn-red" onclick="cancelReserve(' + cancelRec.id + ',\'' + row.bookId + '\')">取消预约</button>';
+    } else {
+      html += '<span style="color:#ccc;">—</span>';
+    }
+    html += '</td></tr>';
+  });
+  
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function parseReserveTime(r) {
+  var rt = v(r, 'reserveDate', 'reserve_date', 'reserveTime', 'reserve_time', 'createdAt', 'createTime', 'create_time') || '';
+  if (!rt) return 0;
+  var t = new Date(rt).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function formatLocalTime(isoStr) {
+  if (!isoStr) return '-';
+  var d = new Date(isoStr);
+  if (isNaN(d.getTime())) {
+    return String(isoStr).substring(0, 19).replace('T', ' ');
+  }
+  var yyyy = d.getFullYear();
+  var mm = String(d.getMonth() + 1).padStart(2, '0');
+  var dd = String(d.getDate()).padStart(2, '0');
+  var hh = String(d.getHours()).padStart(2, '0');
+  var mi = String(d.getMinutes()).padStart(2, '0');
+  var ss = String(d.getSeconds()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd + ' ' + hh + ':' + mi + ':' + ss;
+}
+/* ==================== 取消预约 ==================== */
+async function cancelReserve(reserveId, bookId) {
+  if (!confirm('确定要取消这本书的预约吗？')) return;
+  try {
+    var resp = await fetch(API_BASE + '/reserve/cancel/' + reserveId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('取消预约成功', 'success');
+      // 清理 manualReReservedBookIds 中的记录
+      try {
+        var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+        var idx = reIds.indexOf(Number(bookId));
+        if (idx !== -1) reIds.splice(idx, 1);
+        localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+      } catch(e) {}
+      // 清理 localReserveTimes 中该书的预约时间戳（避免取消后仍显示为待借阅）
+      try {
+        var uid = getUserId();
+        var resKey = 'library_reserve_times_' + (uid || 'default');
+        var allTimes = JSON.parse(localStorage.getItem(resKey) || '{}');
+        delete allTimes[String(bookId)];
+        localStorage.setItem(resKey, JSON.stringify(allTimes));
+      } catch(e) {}
+      loadReservations();
+    } else { showToast(data.msg || '取消预约失败', 'error'); }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+/* ==================== 消息通知（持久化到 localStorage） ==================== */
+var localNotifications = [];   // 从 localStorage 恢复的持久化消息
+var deletedNotifIds = new Set(); // 已删除的消息 ID（不再显示）
+
+// 从 localStorage 恢复消息列表
+// 通知 key 按用户隔离
+function getNotifKey() {
+  var uid = getUserId();
+  return 'library_notifications_' + (uid || 'default');
+}
+function getNotifDeletedKey() {
+  return getNotifKey() + '_deleted';
+}
+function getUnreadKey() {
+  var uid = getUserId();
+  return 'unreadNotificationCount_' + (uid || 'default');
+}
+
+function loadLocalNotifications() {
+  try {
+    var raw = localStorage.getItem(getNotifKey());
+    if (raw) localNotifications = JSON.parse(raw);
+    else localNotifications = [];
+  } catch(e) { localNotifications = []; }
+  try {
+    var rawDel = localStorage.getItem(getNotifDeletedKey());
+    if (rawDel) deletedNotifIds = new Set(JSON.parse(rawDel));
+    else deletedNotifIds = new Set();
+  } catch(e) { deletedNotifIds = new Set(); }
+}
+
+// 保存消息列表到 localStorage
+function saveLocalNotifications() {
+  try { localStorage.setItem(getNotifKey(), JSON.stringify(localNotifications)); } catch(e) {}
+  try { localStorage.setItem(getNotifDeletedKey(), JSON.stringify(Array.from(deletedNotifIds))); } catch(e) {}
+}
+
+// 生成消息唯一 ID
+function makeNotifId(type, refId) {
+  return type + '_' + refId;
+}
+
+// 检测并追加新消息（对比 localNotifications，避免重复）
+function appendNewNotifications(newMsgs) {
+  newMsgs.forEach(function(msg) {
+    if (deletedNotifIds.has(msg.id)) return;
+    var existIdx = -1;
+    for (var i = 0; i < localNotifications.length; i++) {
+      if (localNotifications[i].id === msg.id) { existIdx = i; break; }
+    }
+    if (existIdx === -1) {
+      localNotifications.push(msg);
+    } else {
+      var savedRead = localNotifications[existIdx].read;
+      Object.keys(msg).forEach(function(key) {
+        if (key !== "read" && key !== "id") localNotifications[existIdx][key] = msg[key];
+      });
+      localNotifications[existIdx].read = savedRead;
+    }
+  });
+  saveLocalNotifications();
+}
+
+// 加载消息通知（根据借阅、预约、罚金数据前端生成，并持久化）
+async function loadNotifications() {
+  var container = document.getElementById('notificationTable');
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ 正在加载消息...</div>';
+
+  // 从 localStorage 恢复已有消息
+  loadLocalNotifications();
+
+  // 确保各类数据已加载（总是重新加载以获取最新数据）
+  var uid = getUserId();
+  try {
+    var brResp = await fetch(API_BASE + '/borrow/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var brData = await brResp.json();
+    if (brData.success) borrowData = brData.data || [];
+  } catch (e) {}
+  try {
+    var rsResp = await fetch(API_BASE + '/reserve/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var rsData = await rsResp.json();
+    if (rsData.success) reserveData = rsData.data || [];
+  } catch (e) {}
+  try {
+    var fnResp = await fetch(API_BASE + '/fine/user/all/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var fnData = await fnResp.json();
+    if (fnData.success) fineData = fnData.data || [];
+  } catch (e) {}
+
+  // 计算当前借阅中的书 ID（用于生成消息时判断，不删除历史消息）
+  var borrowedBookIds = new Set();
+  borrowData.forEach(function(r) {
+    var st = getBorrowStatus(r);
+    if (!st.returned) {
+      var bid2 = v(r, "bookId", "book_id");
+      if ((bid2 === undefined || bid2 === null) && r.book && r.book.id != null) bid2 = r.book.id;
+      borrowedBookIds.add(String(bid2));
+    }
+  });
+  // 注意：不再自动删除已借阅书的消息，消息看完后由用户自己删除或清空
+
+  // 生成新消息列表（对比已有消息，只追加新的）
+  var newMsgs = [];
+  // 先保存已有消息的 read 状态，防止被覆盖
+  // 1. 预约可借阅（FULFILLED 状态 或 预约了且有库存）
+  // 先加载所有图书，构建有库存的书 ID 集合
+  var availableBookIds = new Set();
+  try {
+    var allBooksResp = await fetch(API_BASE + '/books/search?keyword=', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    var allBooksData = await allBooksResp.json();
+    if (allBooksData.success) {
+      (allBooksData.data || []).forEach(function(b) {
+        if ((v(b, 'availableCopies', 'available_copies') || 0) > 0) {
+          availableBookIds.add(String(b.id));
+        }
+      });
+    }
+  } catch(e) {}
+  console.log('[profile] 有库存的书 ID:', Array.from(availableBookIds));
+
+  reserveData.forEach(function(r) {
+    var st = v(r, 'status') || '';
+    var bid = v(r, 'bookId', 'book_id');
+    // JPA @ManyToOne 序列化后可能是 {book: {id: 1}}，需要从嵌套对象取
+    if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+    // 条件：FULFILLED 状态，或者预约了且该书有库存，且用户当前未借阅此书
+    // 已结束的预约（书本曾经借阅过）不再推送消息
+    var everBorrowed = false;
+    for (var bi = 0; bi < borrowData.length; bi++) {
+      var bbId = v(borrowData[bi], 'bookId', 'book_id');
+      if ((bbId === undefined || bbId === null) && borrowData[bi].book && borrowData[bi].book.id != null) bbId = borrowData[bi].book.id;
+      if (String(bbId) === String(bid)) { everBorrowed = true; break; }
+    }
+    var canBorrow = false;
+    if (String(st).toUpperCase() === 'FULFILLED' && !everBorrowed) {
+      canBorrow = true;
+    } else if (String(st).toUpperCase() === 'PENDING' && availableBookIds.has(String(bid)) && !borrowedBookIds.has(String(bid))) {
+      canBorrow = true;
+    }
+    if (canBorrow) {
+      var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + bid);
+      newMsgs.push({
+        id: makeNotifId('res', r.id),
+        type: 'reservation_fulfilled',
+        icon: '✅',
+        title: '预约书籍可借阅',
+        message: '您预约的《' + bookTitle + '》已可借阅，请尽快前往借阅！',
+        time: v(r, 'reserveDate', 'reserve_date', 'createdAt', 'createTime', 'create_time') || new Date().toISOString(),
+        read: false,
+        bookId: bid
+      });
+    }
+  });
+
+  // 2. 借阅即将到期（dueDate 在3天内）
+  var now = new Date();
+  var threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  borrowData.forEach(function(r) {
+    var st = getBorrowStatus(r);
+    if (!st.returned) {
+      var dueDateStr = v(r, 'dueDate', 'due_date', 'dueTime', 'due_time') || '';
+      if (dueDateStr) {
+        var dueDate = new Date(dueDateStr);
+        var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
+        var bid = v(r, 'bookId', 'book_id');
+        if (dueDate < now) {
+          newMsgs.push({
+            id: makeNotifId('exp', r.id),
+            type: 'borrow_overdue',
+            icon: '⚠️',
+            title: '借阅已逾期',
+            message: '《' + bookTitle + '》已逾期，请尽快归还！',
+            time: dueDateStr,
+            read: false,
+            bookId: bid
+          });
+        } else if (dueDate < threeDaysLater) {
+          var daysLeft = Math.ceil((dueDate - now) / (24 * 60 * 60 * 1000));
+          newMsgs.push({
+            id: makeNotifId('exp', r.id),
+            type: 'borrow_expiring',
+            icon: '⏰',
+            title: '借阅即将到期',
+            message: '《' + bookTitle + '》还有 ' + daysLeft + ' 天到期，请及时归还！',
+            time: dueDateStr,
+            read: false,
+            bookId: bid
+          });
+        }
+      }
+    }
+  });
+
+  // 3. 未缴纳的罚金
+  fineData.forEach(function(f) {
+    var paid = v(f, 'paid', 'isPaid');
+    if (!paid) {
+      var bookTitle = f.book ? v(f.book, 'title') : ('图书#' + v(f, 'bookId', 'book_id'));
+      var amount = v(f, 'amount', 'fineAmount') || 0;
+      newMsgs.push({
+        id: makeNotifId('fine', f.id),
+        type: 'fine_created',
+        icon: '💰',
+        title: '产生罚金',
+        message: '《' + bookTitle + '》产生罚金 ¥' + parseFloat(amount).toFixed(2) + '，请及时缴纳！',
+        time: v(f, 'createTime', 'create_time') || new Date().toISOString(),
+        read: false,
+        bookId: v(f, 'bookId', 'book_id')
+      });
+    }
+  });
+
+  // 追加新消息到本地存储
+  appendNewNotifications(newMsgs);
+
+  // 按时间倒序排列
+  localNotifications.sort(function(a, b) {
+    var ta = new Date(a.time || '').getTime();
+    var tb = new Date(b.time || '').getTime();
+    if (isNaN(ta)) ta = 0;
+    if (isNaN(tb)) tb = 0;
+    return tb - ta;
+  });
+
+  renderNotifications();
+}
+
+function renderNotifications() {
+  var container = document.getElementById('notificationTable');
+  // 过滤掉已删除的消息
+  var visible = localNotifications.filter(function(n) { return !deletedNotifIds.has(n.id); });
+  if (visible.length === 0) {
+    container.innerHTML = '<div class="empty">暂无消息<br><span style="font-size:12px;">预约可借阅、借阅到期提醒、罚金通知会显示在这里</span></div>';
+    return;
+  }
+
+  var unreadCount = visible.filter(function(n) { return !n.read; }).length;
+  var html = '';
+
+  // 管理按钮栏
+  html += '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">';
+  if (unreadCount > 0) {
+    html += '<button class="btn-sm" style="background:#e3f2fd;color:#1565c0;border:none;" onclick="markAllNotificationsRead()">☐ 标记全部已读</button>';
+  }
+  /* 已读消息始终保存，不提供清空按钮 */
+  html += '<button class="btn-sm" style="background:#ffebee;color:#e53935;border:none;" onclick="clearAllNotifications()">🗑️ 清空全部消息</button>';
+  html += '</div>';
+
+  if (unreadCount > 0) {
+    html += '<div style="padding:12px 16px;background:#fff8e1;border-radius:8px;margin-bottom:16px;font-size:14px;color:#f57c00;">📢 您有 ' + unreadCount + ' 条未读消息</div>';
+  }
+  html += '<div style="display:flex;flex-direction:column;gap:12px;">';
+
+  visible.forEach(function(n) {
+    var readStyle = n.read ? 'opacity:.7;' : '';
+    var typeBorder = n.type === 'reservation_fulfilled' ? 'border-left:4px solid #43a047;' :
+                       n.type === 'borrow_overdue' ? 'border-left:4px solid #e53935;' :
+                       n.type === 'borrow_expiring' ? 'border-left:4px solid #ff9800;' :
+                       'border-left:4px solid #667eea;';
+    // 点击卡片标记已读（未读时），按钮区域用 stopPropagation 阻止
+    var cardClick = (!n.read) ? ' onclick="markNotificationRead(\'' + n.id + '\')" style="cursor:pointer;"' : '';
+    html += '<div class="notif-card"' + cardClick + ' style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.06);' + readStyle + typeBorder + '">';
+    html += '  <div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+    html += '    <div style="flex:1;">';
+    html += '      <div style="font-size:15px;font-weight:600;color:#333;margin-bottom:6px;">' + n.icon + ' ' + escapeHtml(n.title) + '</div>';
+    // 消息内容：可借阅类型的消息，书名用绿色标记并可点击跳转详情页
+    var msgHtml = '';
+    if (n.type === 'reservation_fulfilled' && n.bookId) {
+      // 提取书名，渲染成可点击的绿色链接
+      var bookTitleMatch = n.message.match(/《(.+?)》/);
+      var bookTitle = bookTitleMatch ? bookTitleMatch[1] : '未知图书';
+      var bookLink = '<a href="detail.html?id=' + n.bookId + '" style="color:#43a047;font-weight:600;text-decoration:none;border-bottom:2px solid #43a047;padding-bottom:1px;cursor:pointer;" onclick="event.stopPropagation();">《' + escapeHtml(bookTitle) + '》</a>';
+      msgHtml = '您预约的 ' + bookLink + ' 已可借阅，请尽快前往借阅！';
+    } else {
+      msgHtml = escapeHtml(n.message);
+    }
+    html += '      <div style="font-size:14px;color:#666;line-height:1.6;">' + msgHtml + '</div>';
+    html += '      <div style="font-size:12px;color:#999;margin-top:8px;">' + (n.time ? n.time.substring(0, 19).replace('T', ' ') : '') + '</div>';
+    html += '    </div>';
+    html += '    <div style="display:flex;gap:8px;align-items:flex-start;" onclick="event.stopPropagation();">';
+    html += '      <button class="btn-sm" style="background:#ffebee;color:#e53935;border:none;" onclick="deleteNotification(\'' + n.id + '\')">删除</button>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  // 同步未读计数到首页
+  var unread = localNotifications.filter(function(n) { return !n.read && !deletedNotifIds.has(n.id); }).length;
+  try { localStorage.setItem(getUnreadKey(), String(unread)); } catch(e) {}
+  updateProfileNotifBadge();
+}
+
+// 标记单条消息为已读
+function markNotificationRead(nid) {
+  localNotifications.forEach(function(n) {
+    if (n.id === nid) n.read = true;
+  });
+  saveLocalNotifications();
+  renderNotifications();
+}
+
+// 标记全部已读
+function markAllNotificationsRead() {
+  localNotifications.forEach(function(n) { n.read = true; });
+  saveLocalNotifications();
+  renderNotifications();
+  showToast('已全部标为已读', 'success');
+}
+
+// 删除单条消息（记录到 deletedNotifIds，持久化）
+function deleteNotification(nid) {
+  deletedNotifIds.add(nid);
+  saveLocalNotifications();
+  renderNotifications();
+}
+
+// 清空已读消息
+function clearReadNotifications() {
+  localNotifications.forEach(function(n) {
+    if (n.read) deletedNotifIds.add(n.id);
+  });
+  saveLocalNotifications();
+  renderNotifications();
+  showToast('已清空已读消息', 'success');
+}
+
+// 清空全部消息
+function clearAllNotifications() {
+  if (!confirm('确定要清空全部消息吗？此操作不可恢复。')) return;
+  localNotifications = [];
+  deletedNotifIds = new Set();
+  saveLocalNotifications();
+  renderNotifications();
+  showToast('已清空全部消息', 'success');
+}
+
+// 更新个人中心消息角标（从 localNotifications 计算）
+function updateProfileNotifBadge() {
+  var badge = document.getElementById('notifBadgeProfile');
+  if (!badge) return;
+  var count = localNotifications.filter(function(n) { return !n.read && !deletedNotifIds.has(n.id); }).length;
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+  // 同步到 localStorage（供首页读取）
+  try { localStorage.setItem(getUnreadKey(), String(count)); } catch(e) {}
+}
+/* ==================== 罚金记录 ==================== */
+async function loadFines() {
+  var uid = getUserId();
+  if (!uid) return;
+  var tableEl = document.getElementById('fineTable');
+  tableEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ 正在加载最新数据...</div>';
+  try {
+    var resp = await fetch(API_BASE + '/fine/user/all/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      fineData = data.data || [];
+      renderFines();
+    } else {
+      tableEl.innerHTML = '<div class="empty">加载失败</div>';
+    }
+  } catch (e) {
+    tableEl.innerHTML = '<div class="empty">网络错误</div>';
+  }
+}
+
+function renderFines() {
+  var container = document.getElementById('fineTable');
+  if (fineData.length === 0) {
+    container.innerHTML = '<div class="empty">暂无罚金记录</div>';
+    return;
+  }
+  var html = '<table><thead><tr><th>图书</th><th>罚金金额</th><th>产生时间</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+  fineData.forEach(function(f) {
+    var paid = v(f, 'paid', 'isPaid');
+    var bookTitle = f.book ? v(f.book, 'title') : ('图书#' + v(f, 'bookId', 'book_id'));
+    var amount = v(f, 'amount', 'fineAmount') || 0;
+    var statusText = paid ? '已缴纳' : '未缴纳';
+    var statusClass = paid ? 'status-returned' : 'status-overdue';
+    html += '<tr>';
+    html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+    html += '<td>¥' + parseFloat(amount).toFixed(2) + '</td>';
+    html += '<td>' + (v(f, 'createTime', 'create_time') || '-') + '</td>';
+    html += '<td><span class="' + statusClass + '">' + statusText + '</span></td>';
+    html += '<td>';
+    if (!paid) {
+      html += '<button class="btn-sm btn-green" onclick="payFine(' + f.id + ')">缴纳</button>';
+    } else {
+      html += '<button class="btn-sm btn-green" disabled>已缴纳</button>';
+    }
+    html += '</td></tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function payFine(fineId) {
+  if (!confirm('确定要缴纳这笔罚金吗？')) return;
+  try {
+    var resp = await fetch(API_BASE + '/fine/pay/' + fineId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('缴纳成功 ✅', 'success');
+      loadFines(); // 实时刷新
+    } else { showToast(data.msg || '缴纳失败', 'error'); }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+/* ==================== 我的书评（含删除功能） ==================== */
+async function loadReviews() {
+  var uid = getUserId();
+  if (!uid) return;
+  var reviewTable = document.getElementById('reviewTable');
+  reviewTable.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ 正在加载最新数据...</div>';
+
+  try {
+    // 先确保借阅数据已加载
+    if (borrowData.length === 0) {
+      try {
+        var brResp = await fetch(API_BASE + '/borrow/user/' + uid, {
+          headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        var brData = await brResp.json();
+        if (brData.success) borrowData = brData.data || [];
+      } catch (e) { /* 忽略 */ }
+    }
+
+    // 收集所有关联的 bookId
+    var bookIds = new Set();
+    borrowData.forEach(function(r) {
+      var bid = v(r, 'bookId', 'book_id');
+      if (bid) bookIds.add(bid);
+    });
+    reserveData.forEach(function(r) {
+      var bid = v(r, 'bookId', 'book_id');
+      if (bid) bookIds.add(bid);
+    });
+
+    if (bookIds.size === 0) {
+      reviewTable.innerHTML = '<div class="empty">暂无个人书评记录<br><span style="font-size:12px;">提示：您借阅过书籍并发表书评后，会显示在此处</span></div>';
+      return;
+    }
+
+    // 并行获取每个书籍的书评
+    var promises = [];
+    bookIds.forEach(function(bid) {
+      promises.push(
+        fetch(API_BASE + '/review/book/' + bid)
+          .then(function(resp) { return resp.json(); })
+          .catch(function() { return { success: false }; })
+      );
+    });
+    var results = await Promise.all(promises);
+
+    // 筛选属于当前用户的书评
+    reviewData = [];
+    results.forEach(function(result) {
+      if (result.success && result.data) {
+        result.data.forEach(function(review) {
+          var rid = v(review, 'userId', 'user_id');
+          if (String(rid) === String(uid)) {
+            reviewData.push(review);
+          }
+        });
+      }
+    });
+
+    // 按时间倒序排列
+    reviewData.sort(function(a, b) {
+      var ta = new Date(v(a, 'createdAt', 'createTime', 'create_time') || '').getTime();
+      var tb = new Date(v(b, 'createdAt', 'createTime', 'create_time') || '').getTime();
+      if (isNaN(ta)) ta = 0;
+      if (isNaN(tb)) tb = 0;
+      return tb - ta;
+    });
+
+    renderReviews();
+  } catch (e) {
+    reviewTable.innerHTML = '<div class="empty">暂无个人书评记录</div>';
+  }
+}
+
+function renderReviews() {
+  var reviewTable = document.getElementById('reviewTable');
+  if (reviewData.length === 0) {
+    reviewTable.innerHTML = '<div class="empty">暂无个人书评记录<br><span style="font-size:12px;">提示：去图书详情页发表书评吧！</span></div>';
+    return;
+  }
+
+  // 表头：图书、评分、内容、时间、方式、操作
+  var html = '<table><thead><tr><th>图书</th><th>评分</th><th>内容</th><th>时间</th><th>方式</th><th>操作</th></tr></thead><tbody>';
+  reviewData.forEach(function(r) {
+    var stars = '⭐'.repeat(r.rating || 0);
+    var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
+    var isAnon = isReviewAnonymous(r.id);
+    var anonTag = isAnon
+      ? '<span style="color:#999;font-size:12px;">匿名</span>'
+      : '<span style="color:#667eea;font-size:12px;">实名</span>';
+    html += '<tr>';
+    html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+    html += '<td>' + stars + '</td>';
+    // 内容列：匿名时显示"已匿名"，否则显示内容（允许空内容）
+    html += '<td>' + (isAnon ? '<span style="color:#ccc;">已匿名</span>' : escapeHtml(r.content || '（无文字评价）')) + '</td>';
+    html += '<td>' + (v(r, 'createdAt', 'createTime', 'create_time') || '-') + '</td>';
+    html += '<td>' + anonTag + '</td>';
+    html += '<td><button class="review-del-btn" onclick="deleteReview(' + r.id + ')">🗑️ 删除</button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  reviewTable.innerHTML = html;
+}
+
+// 删除书评
+async function deleteReview(reviewId) {
+  if (!confirm('确定要删除这条书评吗？')) return;
+  var uid = getUserId();
+  try {
+    var resp = await fetch(API_BASE + '/review/del/' + reviewId + '?userId=' + uid, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('删除成功 ✅', 'success');
+      loadReviews(); // 实时刷新
+    } else {
+      showToast(data.msg || '删除失败', 'error');
+    }
+  } catch (e) {
+    showToast('网络错误', 'error');
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 初始化（默认加载借阅记录 Tab，从 localStorage 恢复消息）
+(function init() {
+  if (!checkAuth()) return;
+  // 管理员账号不应访问读者端页面
+  try {
+    var u = JSON.parse(localStorage.getItem('user') || '{}');
+    if (u.role === 'admin') { location.href = '/api/admin/dashboard.html'; return; }
+  } catch(e) {}
+  loadBorrows();
+  // 从 localStorage 恢复本地消息并渲染
+  loadLocalNotifications();
+  renderNotifications();
+  updateProfileNotifBadge();
+
+  // 检查 URL hash，自动切换到消息 tab
+  if (window.location.hash === '#notifications') {
+    setTimeout(function() {
+      var tabEl = document.querySelector('.tab[onclick*="notifications"]');
+      if (tabEl) tabEl.click();
+    }, 100);
+  }
+})();
+
+
+// 页面每次显示时更新消息角标
+window.addEventListener('pageshow', function(event) {
+  updateProfileNotifBadge();
+});
+</script>
+</body>
+</html>

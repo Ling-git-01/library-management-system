@@ -19,10 +19,16 @@ function closeModal() {
 
 // ---- 退出登录 ----
 function logout() {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_role');
-    localStorage.removeItem('admin_userId');
-    window.location.href = '/api/login.html';
+    // 标记已登出
+    sessionStorage.setItem('justLoggedOut', '1');
+    // 清除所有 admin 相关 key + 登录页用的 token/user key（防止 login.html 自动跳回）
+    Object.keys(localStorage).forEach(function(key) {
+        if (key.startsWith('admin_') || key === 'token' || key === 'user') {
+            localStorage.removeItem(key);
+        }
+    });
+    // 用 replace 跳转，彻底替换历史记录
+    window.location.replace('/api/login.html');
 }
 
 // ---- 渲染右上角用户栏 ----
@@ -45,6 +51,11 @@ function escapeHtml(s) {
 
 // ---- 路由守卫：每个 admin 页面加载时强制校验 ----
 (function guardAdmin() {
+    // 如果刚登出（sessionStorage 有标记），说明是从 login.html 后进来的，直接放行
+    if (sessionStorage.getItem('justLoggedOut') === '1') {
+        sessionStorage.removeItem('justLoggedOut');
+        return; // 不跳转，让 login.html 正常显示
+    }
     const token = getToken();
     const role = getRole();
     if (!token || role !== 'admin') {

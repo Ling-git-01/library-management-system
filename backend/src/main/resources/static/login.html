@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图书馆管理系统 - 登录</title>
+<!-- 防止从管理页登出后，浏览器后退缓存导致 token 未清除 -->
+<script>
+  // 每次加载登录页时，如果 URL 里没有 logout=1 标记，但 localStorage 里有 admin token，
+  // 说明是用户点后退回来的，需要强制清掉
+  if (window.performance && window.performance.navigation.type === window.performance.navigation.TYPE_BACK_FORWARD) {
+    // 浏览器后退/前进命中缓存，清掉可能残留的 token，让登录页正常显示
+    sessionStorage.setItem('justLoggedOut', '1');
+  }
+  if (sessionStorage.getItem('justLoggedOut') === '1') {
+    // 标记已处理，不清 token（让登录页正常显示）
+    sessionStorage.removeItem('justLoggedOut');
+  }
+</script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Microsoft YaHei', sans-serif;
+  background: url('images/bg-library.jpg') no-repeat center center fixed;
+  background-size: cover;
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.login-box {
+  background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  width: 420px; padding: 40px;
+}
+h2 { text-align: center; color: #333; margin-bottom: 24px; font-size: 24px; }
+.tabs { display: flex; margin-bottom: 28px; border-bottom: 2px solid #eee; }
+.tab {
+  flex: 1; text-align: center; padding: 12px 0; cursor: pointer;
+  color: #999; font-size: 16px; font-weight: 600;
+  transition: all .3s; position: relative;
+}
+.tab.active { color: #667eea; }
+.tab.active::after {
+  content: ''; position: absolute; bottom: -2px; left: 20%; right: 20%;
+  height: 2px; background: #667eea;
+}
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; margin-bottom: 6px; color: #555; font-size: 14px; font-weight: 500; }
+.form-group input {
+  width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 15px; transition: border-color .3s; outline: none;
+}
+.form-group input:focus { border-color: #667eea; }
+.btn {
+  width: 100%; padding: 13px; background: #667eea; color: #fff; border: none;
+  border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;
+  transition: background .3s; margin-top: 8px;
+}
+.btn:hover { background: #5a6fd6; }
+.links { text-align: center; margin-top: 18px; font-size: 14px; color: #888; }
+.links a { color: #667eea; text-decoration: none; cursor: pointer; }
+.links a:hover { text-decoration: underline; }
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 28px;
+  border-radius: 8px; color: #fff; font-size: 14px; z-index: 9999;
+  animation: fadeIn .3s; display: none;
+}
+.toast.error { background: #f56c6c; }
+.toast.success { background: #67c23a; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h2>📚 图书馆管理系统</h2>
+  <div class="tabs">
+    <div class="tab active" id="readerTab" onclick="switchRole('reader')">读者登录</div>
+    <div class="tab" id="adminTab" onclick="switchRole('admin')">管理员登录</div>
+  </div>
+  <form id="loginForm" onsubmit="handleLogin(event)">
+    <div class="form-group">
+      <label>用户名</label>
+      <input type="text" id="username" placeholder="请输入用户名" required>
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="password" placeholder="请输入密码" required>
+    </div>
+    <button type="submit" class="btn" id="loginBtn">登 录</button>
+  </form>
+  <div class="links" id="readerLinks">
+    还没有账号？<a onclick="location.href='register.html'">立即注册</a>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = 'http://localhost:8080/api';
+let currentRole = 'reader';
+
+function switchRole(role) {
+  currentRole = role;
+  document.getElementById('readerTab').classList.toggle('active', role === 'reader');
+  document.getElementById('adminTab').classList.toggle('active', role === 'admin');
+  document.getElementById('loginBtn').textContent = role === 'reader' ? '读者登录' : '管理员登录';
+  document.getElementById('readerLinks').style.display = role === 'reader' ? '' : 'none';
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type; t.style.display = 'block';
+  setTimeout(function(){ t.style.display = 'none'; }, 3000);
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value.trim();
+  if (!username || !password) { showToast('请输入用户名和密码', 'error'); return; }
+
+  try {
+    const resp = await fetch(API_BASE + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username, password: password })
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify({
+        id: data.userId, username: data.username, role: data.role
+      }));
+
+      // admin 登录时，同时设置 admin 专用键值（admin 页面的 common.js 依赖这些 key）
+      if (data.role === 'admin') {
+        localStorage.setItem('admin_token', data.token);
+        localStorage.setItem('admin_role', data.role);
+        localStorage.setItem('admin_username', data.username);
+        localStorage.setItem('admin_userId', data.userId);
+      }
+
+      // 根据选择的角色验证
+      if (currentRole === 'admin' && data.role !== 'admin') {
+        showToast('该账号不是管理员，请使用管理员账号登录', 'error');
+        return;
+      }
+      if (currentRole === 'reader' && data.role !== 'reader') {
+        showToast('该账号不是读者，请使用读者账号登录', 'error');
+        return;
+      }
+
+      showToast('登录成功', 'success');
+      setTimeout(function(){
+        if (data.role === 'admin') {
+          location.replace('/api/admin/dashboard.html');
+        } else {
+          location.replace('/api/index.html');
+        }
+      }, 500);
+    } else {
+      showToast(data.msg || '登录失败', 'error');
+    }
+  } catch (err) {
+    showToast('网络错误，请检查后端服务是否启动', 'error');
+  }
+}
+
+// 已有 token 自动跳转
+(function(){
+  // 刚登出时不自动跳转，显示登录页
+  if (sessionStorage.getItem('justLoggedOut') === '1') {
+    sessionStorage.removeItem('justLoggedOut');
+    return;
+  }
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (token && user.role) {
+    // admin 自动跳转时，确保 admin 专用键值存在
+    if (user.role === 'admin') {
+      localStorage.setItem('admin_token', token);
+      localStorage.setItem('admin_role', user.role);
+      localStorage.setItem('admin_username', user.username || '');
+      localStorage.setItem('admin_userId', user.id || '');
+    }
+    location.replace(user.role === 'admin' ? '/api/admin/dashboard.html' : '/api/index.html');
+  }
+})();
+</script>
+</body>
+</html>
