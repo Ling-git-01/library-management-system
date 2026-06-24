@@ -44,7 +44,7 @@
             <!-- 操作栏 -->
             <div class="toolbar">
                 <div class="search-box">
-                    <input type="text" id="readerSearch" placeholder="搜索用户名、邮箱..." oninput="filterReaders()">
+                    <input type="text" id="readerSearch" aria-label="搜索读者" placeholder="搜索用户名、邮箱..." oninput="filterReaders()">
                 </div>
             </div>
 
@@ -179,6 +179,7 @@
                             ? `<button class="btn btn-warning btn-sm" onclick="toggleReader(${r.id}, false)">禁用</button>`
                             : `<button class="btn btn-success btn-sm" onclick="toggleReader(${r.id}, true)">启用</button>`}
                         <button class="btn btn-primary btn-sm" onclick="editMaxBorrow(${r.id}, ${maxBorrow})">修改借阅上限</button>
+                        <button class="btn btn-warning btn-sm" onclick="resetPassword(${r.id}, '${(r.username || '').replace(/'/g, "\\'")}')">重置密码</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteReader(${r.id})">删除</button>
                     </td>
                 </tr>
@@ -271,6 +272,33 @@
                 }
             } catch (err) {
                 alert('修改失败: ' + err.message);
+            }
+        }
+
+        // --- 重置密码为 123456 ---
+        async function resetPassword(id, username) {
+            if (!confirm(`确定将用户 "${username}" 的密码重置为 123456 吗？`)) return;
+            try {
+                const res = await fetch(`/api/admin/user/resetPwd/${id}?newPwd=123456`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + getToken() }
+                });
+                const ct = res.headers.get('content-type') || '';
+                let result;
+                if (ct.includes('application/json')) {
+                    result = await res.json();
+                } else {
+                    const text = await res.text();
+                    alert('重置失败（HTTP ' + res.status + '，非JSON）：' + text.substring(0, 200));
+                    return;
+                }
+                if (res.ok && result.success) {
+                    alert('密码已重置为 123456');
+                } else {
+                    alert('重置失败: ' + (result.msg || res.status));
+                }
+            } catch (err) {
+                alert('重置失败: ' + err.message);
             }
         }
 
