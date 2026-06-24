@@ -1,0 +1,875 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图书馆管理系统 - 图书详情</title>
+<!-- 管理员拦截：admin 访问读者端时强制跳转回管理页 -->
+<script>
+(function(){
+  try {
+    var user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user && user.role === 'admin') {
+      var adminToken = localStorage.getItem('admin_token');
+      if (adminToken) {
+        location.replace('/api/admin/dashboard.html');
+        return;
+      }
+    }
+  } catch(e) {}
+})();
+</script>
+<style>
+* { margin:0; padding:0; box-sizing: border-box; }
+body { font-family: 'Microsoft YaHei', sans-serif; background: url('images/bg-library.jpg') no-repeat center center fixed; background-size: cover; min-height: 100vh; position: relative; }
+body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.85); z-index: -1; }
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 16px 0; color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.15);
+}
+.header-inner { max-width: 1100px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; }
+.header-inner h1 { font-size: 20px; }
+.header-inner a { color: #fff; text-decoration: none; font-size: 15px; cursor: pointer; }
+.header-inner a:hover { opacity: .8; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+.detail-card {
+  background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.06);
+}
+.detail-cover {
+  height: 320px; overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.detail-cover img { width: 100%; height: 100%; object-fit: cover; }
+
+/* 动态封面 */
+.dynamic-cover {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.dynamic-cover .dc-bg {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0;
+}
+.dynamic-cover .dc-icon {
+  z-index: 1; font-size: 72px; line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,.15));
+  margin-bottom: 8px;
+}
+.dynamic-cover .dc-letter {
+  z-index: 1; font-size: 56px; font-weight: 700; color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,.25);
+}
+.dynamic-cover .dc-title {
+  z-index: 1; font-size: 15px; color: rgba(255,255,255,.85); max-width: 75%;
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+
+.detail-body { padding: 24px 28px; }
+.detail-body h2 { font-size: 24px; color: #333; margin-bottom: 12px; }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 16px; }
+.detail-meta .meta-item { font-size: 14px; color: #666; }
+.detail-meta .meta-item strong { color: #333; }
+.detail-desc { font-size: 15px; color: #555; line-height: 1.8; margin-bottom: 20px; }
+.detail-status { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.status-badge {
+  padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 600;
+}
+.badge-available { background: #e8f5e9; color: #43a047; }
+.badge-canborrow { background: linear-gradient(135deg, #e8f5e9, #c8e6c9); color: #2e7d32; font-weight: 600; }
+.badge-reserved { background: #fff3e0; color: #ef6c00; }
+.badge-unavailable { background: #ffebee; color: #e53935; }
+.badge-borrowed { background: #e3f2fd; color: #1565c0; }
+.copies-text { font-size: 14px; color: #888; }
+.action-bar { display: flex; gap: 12px; margin-bottom: 24px; }
+.btn {
+  padding: 10px 28px; border-radius: 8px; font-size: 15px; font-weight: 600;
+  cursor: pointer; border: none; transition: all .3s;
+}
+.btn-primary { background: #667eea; color: #fff; }
+.btn-primary:hover { background: #5a6fd6; }
+.btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+.btn-warning { background: #ff9800; color: #fff; }
+.btn-warning:hover { background: #f57c00; }
+.btn-warning:disabled { background: #ccc; cursor: not-allowed; }
+.btn-cancel { background: #e53935; color: #fff; }
+.btn-cancel:hover { background: #c62828; }
+.btn-borrowed { background: #1565c0; color: #fff; }
+.section-title {
+  font-size: 18px; color: #333; font-weight: 600; margin-bottom: 16px;
+  padding-bottom: 10px; border-bottom: 2px solid #667eea;
+}
+.review-list { margin-top: 24px; }
+.review-item {
+  background: #fff; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px;
+  box-shadow: 0 1px 6px rgba(0,0,0,.04); position: relative;
+}
+.review-item .review-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.review-item .review-user { font-weight: 600; font-size: 14px; color: #333; }
+.review-item .review-stars { color: #f5a623; font-size: 14px; }
+.review-item .review-content { font-size: 14px; color: #666; line-height: 1.6; }
+.review-item .review-time { font-size: 12px; color: #bbb; margin-top: 6px; }
+.review-del-btn {
+  position: absolute; right: 16px; bottom: 14px;
+  padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  border: 1px solid #f56c6c; color: #f56c6c; background: transparent;
+  transition: all .2s;
+}
+.review-del-btn:hover { background: #f56c6c; color: #fff; }
+.add-review {
+  background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 20px;
+  box-shadow: 0 1px 6px rgba(0,0,0,.04);
+}
+.add-review .reviewer-row { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; font-size: 14px; color: #555; }
+.add-review .reviewer-row .reviewer-name { font-weight: 600; color: #333; }
+.add-review .reviewer-row label { cursor: pointer; display: flex; align-items: center; gap: 4px; color: #888; font-size: 13px; }
+.add-review .reviewer-row input[type=checkbox] { cursor: pointer; }
+.add-review .star-select { display: flex; gap: 6px; margin-bottom: 12px; font-size: 28px; cursor: pointer; }
+.add-review .star-select span { color: #ddd; transition: color .2s; }
+.add-review .star-select span.active { color: #f5a623; }
+.add-review textarea {
+  width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;
+  font-size: 14px; resize: vertical; min-height: 80px; outline: none; font-family: inherit;
+}
+.add-review textarea:focus { border-color: #667eea; }
+.add-review .review-tip { font-size: 12px; color: #999; margin-top: 6px; }
+.loading { text-align: center; padding: 60px; color: #999; font-size: 16px; }
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 28px;
+  border-radius: 8px; color: #fff; font-size: 14px; z-index: 9999; display: none;
+  animation: fadeIn .3s;
+}
+.toast.error { background: #f56c6c; }
+.toast.success { background: #67c23a; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+
+/* 同类推荐区域 */
+.recommend-section { margin-top: 24px; }
+.recommend-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;
+  margin-top: 16px;
+}
+.recommend-card {
+  background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  transition: transform .3s, box-shadow .3s; cursor: pointer;
+}
+.recommend-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+.recommend-card .rc-cover {
+  height: 180px; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.recommend-card .rc-cover img { width: 100%; height: 100%; object-fit: cover; }
+.recommend-card .rc-info { padding: 12px 14px; }
+.recommend-card .rc-info h4 { font-size: 14px; color: #333; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recommend-card .rc-info .rc-author { font-size: 12px; color: #999; margin-bottom: 6px; }
+.recommend-card .rc-info .rc-status {
+  display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+}
+.rc-available { background: #e8f5e9; color: #43a047; }
+.rc-unavailable { background: #ffebee; color: #e53935; }
+.recommend-loading { text-align: center; padding: 20px; color: #999; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-inner">
+    <h1>📚 图书详情</h1>
+    <div style="display:flex;gap:20px;align-items:center;">
+      <a href="index.html">← 返回首页</a>
+      <a onclick="doLogout()" style="color:#ffeb3b;">退出登录</a>
+    </div>
+  </div>
+</div>
+
+<div class="container" id="detailContainer">
+  <div class="loading">加载中...</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var API_BASE = 'http://localhost:8080/api';
+var bookId = null;
+var bookData = null;
+var userReserved = false;
+var userFulfilled = false; // 预约已生效（状态为 FULFILLED），可直接借阅
+var userBorrowed = false;  // 是否正在借阅此书（未归还）
+var userReturned = false;  // 是否曾经借阅过此书并且已归还
+
+/* ====== 预定义颜色方案 ====== */
+var COVER_COLORS = [
+  ['#667eea', '#764ba2'], ['#f093fb', '#f5576c'], ['#4facfe', '#00f2fe'],
+  ['#43e97b', '#38f9d7'], ['#fa709a', '#fee140'], ['#a18cd1', '#fbc2eb'],
+  ['#fccb90', '#d57eeb'], ['#e0c3fc', '#8ec5fc'], ['#f5576c', '#ff6a88'],
+  ['#96fbc4', '#f9f586'], ['#cd9cf2', '#f6f3ff'], ['#a1c4fd', '#c2e9fb'],
+];
+
+function getColorIndex(seed) {
+  if (!seed) return 0;
+  var hash = 0;
+  for (var i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % COVER_COLORS.length;
+}
+
+function generateDynamicCover(book) {
+  var title = v(book, 'title', 'name', 'bookName') || '未知';
+  var idx = getColorIndex(title + (book.id || ''));
+  var colors = COVER_COLORS[idx];
+  var firstChar = title.replace(/^【.*?】/, '').charAt(0).toUpperCase();
+  if (firstChar >= '0' && firstChar <= '9') firstChar = '📖';
+  var iconMap = {
+    'Spring': '🌸', 'Java': '☕', 'Python': '🐍', '围': '🏯', '平': '🌍',
+    '中': '📜', '高': '📐', '设': '🎨', '算': '💻', '数': '🔢',
+    'C': '⚙️', 'G': '🎮', 'A': '🤖', 'W': '🌐', 'D': '🗄️',
+    'J': '📘', 'P': '📗', 'M': '📘', 'L': '🦀', 'R': '🔴'
+  };
+  var icon = '📖';
+  for (var k in iconMap) {
+    if (title.indexOf(k) === 0) { icon = iconMap[k]; break; }
+  }
+
+  return '<div class="dynamic-cover">' +
+    '<div class="dc-bg" style="background:linear-gradient(135deg,' + colors[0] + ',' + colors[1] + ');"></div>' +
+    '<div class="dc-icon">' + icon + '</div>' +
+    '<div class="dc-letter">' + escapeHtml(firstChar) + '</div>' +
+    '<div class="dc-title">' + escapeHtml(title) + '</div></div>';
+}
+
+// 通用字段兼容
+function v(obj) {
+  if (!obj) return undefined;
+  for (var i = 1; i < arguments.length; i++) {
+    var k = arguments[i];
+    if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
+  }
+  return undefined;
+}
+
+function getParam(name) {
+  var p = new URLSearchParams(location.search);
+  return p.get(name);
+}
+function getUserId() {
+  var u = JSON.parse(localStorage.getItem('user') || '{}');
+  return u.id || null;
+}
+function getToken() { return localStorage.getItem('token'); }
+function getUserName() {
+  var u = JSON.parse(localStorage.getItem('user') || '{}');
+  return u.username || '用户';
+}
+
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type; t.style.display = 'block';
+  setTimeout(function(){ t.style.display = 'none'; }, 3000);
+}
+
+function doLogout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  location.href = 'login.html';
+}
+
+function checkAuth() {
+  if (!getToken()) { location.href = 'login.html'; return false; }
+  return true;
+}
+
+// 图片加载失败 fallback
+function imgError(img) {
+  img.style.display = 'none';
+  var bookData = {};
+  try {
+    var raw = img.getAttribute('data-book');
+    if (raw) { bookData = JSON.parse(raw); }
+    // 兼容 onerror 中通过 this._bookData 传递数据的方式
+    else if (img._bookData) { bookData = img._bookData; }
+  } catch (e) {}
+  var coverDiv = document.createElement('div');
+  coverDiv.innerHTML = generateDynamicCover(bookData);
+  if (coverDiv.firstChild) img.parentNode.appendChild(coverDiv.firstChild);
+}
+
+// 判断书评是否匿名
+function isReviewAnonymous(reviewId) {
+  try {
+    var list = JSON.parse(localStorage.getItem('anonymousReviews') || '[]');
+    return list.indexOf(String(reviewId)) !== -1 || list.indexOf(reviewId) !== -1;
+  } catch (e) { return false; }
+}
+
+// 加载预约状态
+async function loadMyReservationStatus() {
+  var uid = getUserId();
+  if (!uid || !bookId) return;
+  try {
+    var resp = await fetch(API_BASE + '/reserve/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success && data.data) {
+      userReserved = false;
+      userFulfilled = false;
+      data.data.forEach(function(r) {
+        var bid = v(r, 'bookId', 'book_id');
+        // JPA @ManyToOne 序列化后可能是 {book: {id: 1}}，需要从嵌套对象取
+        if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+        if (String(bid) !== String(bookId)) return;
+        var st = String(v(r, 'status') || '').toUpperCase();
+        if (st === 'PENDING') { userReserved = true; }
+        else if (st === 'FULFILLED') { userFulfilled = true; }
+      });
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+// 修改：加载借阅状态（检查是否已借阅/曾借阅此书）
+async function loadMyBorrowStatus() {
+  var uid = getUserId();
+  if (!uid || !bookId) return;
+  try {
+    var resp = await fetch(API_BASE + '/borrow/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success && data.data) {
+      userBorrowed = false;
+      userReturned = false;
+      data.data.forEach(function(r) {
+        var bid = v(r, 'bookId', 'book_id');
+        // JPA @ManyToOne 序列化后可能是 {book: {id: 1}}，需要从嵌套对象取
+        if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+        if (String(bid) !== String(bookId)) return;
+        var bStatus = v(r, 'status');
+        var returnTime = v(r, 'returnTime', 'return_time', 'returnDate', 'return_date', 'actualReturnDate');
+        var stStr = String(bStatus || '').toLowerCase();
+        // 扩展已归还判断（不包含 0，因为它在不同系统中含义可能相反）
+        var isReturned = (stStr === 'returned' || stStr === 'return' ||
+                          stStr === 'closed' || stStr === 'complete' || stStr === 'completed' ||
+                          bStatus === 1 || bStatus === '1' ||
+                          stStr === 'finished' || stStr === 'done' ||
+                          returnTime);
+        // 正向判断：只有明确是"借阅中/逾期"才视为正在借阅
+        var isBorrowing = (stStr === 'borrowing' || stStr === 'borrow' ||
+                           stStr === 'overdue' || stStr === 'active' ||
+                           stStr === 'borrowed' || stStr === 'in_use');
+        if (isBorrowing) {
+          userBorrowed = true;
+          userReturned = false;
+        } else if (isReturned) {
+          userReturned = true;
+          userBorrowed = false;
+        }
+        // 其他未知状态：不改变现有状态（函数开头已初始化为 false）
+      });
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+async function loadReviews() {
+  try {
+    var resp = await fetch(API_BASE + '/review/book/' + bookId, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success && data.data) {
+      renderReviews(data.data);
+    } else {
+      document.getElementById('reviewList').innerHTML = '<div style="padding:12px;color:#999;font-size:14px;">暂无书评</div>';
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+// 判断是否是自己的书评（可删除）
+function isMyReview(review) {
+  var uid = getUserId();
+  var rUid = v(review, 'userId', 'user_id');
+  return String(rUid) === String(uid) && String(uid) !== 'null' && String(uid) !== 'undefined';
+}
+
+function renderReviews(reviews) {
+  var container = document.getElementById('reviewList');
+  if (!reviews || reviews.length === 0) {
+    container.innerHTML = '<div style="padding:12px;color:#999;font-size:14px;">暂无书评</div>';
+    return;
+  }
+  var html = '';
+  reviews.forEach(function(r) {
+    var stars = '⭐'.repeat(r.rating || 0);
+    var isAnon = isReviewAnonymous(r.id);
+    var myRv = isMyReview(r);
+    var uname;
+    if (isAnon) {
+      uname = '匿名用户';
+    } else {
+      uname = (r.user && v(r.user, 'username')) || v(r, 'username', 'userName') || '用户';
+    }
+    // 删除按钮：只有自己的书评显示
+    var delBtnHtml = myRv
+      ? '<button class="review-del-btn" onclick="deleteReview(' + r.id + ')">🗑️ 删除</button>'
+      : '';
+
+    html += '<div class="review-item">';
+    html += '<div class="review-header"><span class="review-user">' + escapeHtml(uname) + '</span><span class="review-stars">' + stars + '</span></div>';
+    html += '<div class="review-content">' + escapeHtml(r.content || '  ') + '</div>';
+    html += '<div class="review-time">' + (v(r, 'createdAt', 'createTime', 'create_time') || '') + '</div>';
+    html += delBtnHtml;
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+// 删除书评
+async function deleteReview(reviewId) {
+  if (!confirm('确定要删除这条书评吗？')) return;
+  var uid = getUserId();
+  try {
+    var resp = await fetch(API_BASE + '/review/del/' + reviewId + '?userId=' + uid, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('删除成功', 'success');
+      loadReviews(); // 实时刷新书评列表
+    } else {
+      showToast(data.msg || '删除失败', 'error');
+    }
+  } catch (e) {
+    showToast('网络错误', 'error');
+  }
+}
+
+// 提交书评（只需打分，内容可选）
+async function submitReview() {
+  var uid = getUserId();
+  if (!uid) { showToast('请先登录', 'error'); return; }
+  var rating = document.querySelectorAll('#starSelect span.active').length;
+  var content = document.getElementById('reviewContent').value.trim();
+  var isAnonymous = document.getElementById('anonymousCheck').checked;
+  if (rating === 0) { showToast('请选择评分', 'error'); return; }
+  // 内容可选：允许空字符串
+  if (!content) content = '';
+
+  try {
+    var resp = await fetch(API_BASE + '/review/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ userId: uid, bookId: bookId, rating: rating, content: content, isAnonymous: isAnonymous })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      // 匿名书评：将 review ID 存入 localStorage
+      if (isAnonymous && data.data && data.data.id) {
+        var anonList = JSON.parse(localStorage.getItem('anonymousReviews') || '[]');
+        anonList.push(data.data.id);
+        localStorage.setItem('anonymousReviews', JSON.stringify(anonList));
+      }
+      showToast('书评发表成功', 'success');
+      document.getElementById('reviewContent').value = '';
+      var spans = document.querySelectorAll('#starSelect span');
+      spans.forEach(function(s){ s.classList.remove('active'); });
+      document.getElementById('anonymousCheck').checked = false;
+      onAnonymousChange(document.getElementById('anonymousCheck'));
+      loadReviews(); // 实时刷新
+    } else { showToast(data.msg || '发表失败', 'error'); }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+async function handleBorrow() {
+  var uid = getUserId();
+  if (!uid) { showToast('请先登录', 'error'); return; }
+  try {
+    var resp = await fetch(API_BASE + '/borrow/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ userId: uid, bookId: bookId, borrowDays: 30 })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('借阅成功', 'success');
+      // 借阅成功，清理 manualReReservedBookIds（该预约周期结束）
+      try {
+        var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+        var idx = reIds.indexOf(Number(bookId));
+        if (idx !== -1) reIds.splice(idx, 1);
+        localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+      } catch(e) {}
+      setTimeout(function(){ location.reload(); }, 800);
+    } else { showToast(data.msg || '借阅失败', 'error'); }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+// 取消预约
+async function cancelReservationFromDetail() {
+  var uid = getUserId();
+  if (!uid) { showToast('请先登录', 'error'); return; }
+  if (!confirm('确定要取消这本书的预约吗？')) return;
+  try {
+    var resp = await fetch(API_BASE + '/reserve/user/' + uid, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (!data.success || !data.data) { showToast('未找到预约记录', 'error'); return; }
+    var reservation = data.data.find(function(r) {
+      var bid = v(r, 'bookId', 'book_id');
+      if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+      var st = String(v(r, 'status') || '').toUpperCase();
+      return String(bid) === String(bookId) && (st === 'PENDING' || st === 'FULFILLED');
+    });
+    if (!reservation) { showToast('未找到可取消的预约', 'error'); return; }
+    var cancelResp = await fetch(API_BASE + '/reserve/cancel/' + reservation.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
+    });
+    var cancelData = await cancelResp.json();
+    if (cancelData.success) {
+      showToast('取消预约成功', 'success');
+      // 清理 manualReReservedBookIds 和 localReserveTimes
+      try {
+        var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+        var idx = reIds.indexOf(Number(bookId));
+        if (idx !== -1) reIds.splice(idx, 1);
+        localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+      } catch(e) {}
+      try {
+        var resKey = 'library_reserve_times_' + (uid || 'default');
+        var allTimes = JSON.parse(localStorage.getItem(resKey) || '{}');
+        delete allTimes[String(bookId)];
+        localStorage.setItem(resKey, JSON.stringify(allTimes));
+      } catch(e) {}
+      location.reload();
+    } else {
+      showToast(cancelData.msg || '取消预约失败', 'error');
+    }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+async function handleReserve() {
+  var uid = getUserId();
+  if (!uid) { showToast('请先登录', 'error'); return; }
+  try {
+    var resp = await fetch(API_BASE + '/reserve/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ userId: uid, bookId: bookId })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('预约成功', 'success');
+      userReserved = true;
+      // 始终保存手动预约标记（无论是否曾借阅归还，都记录为主动预约）
+      try {
+        var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+        if (reIds.indexOf(bookId) === -1) reIds.push(bookId);
+        localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+      } catch(e) {}
+      // 保存独立预约时间到 localStorage（每次预约独立时间戳，不重复利用旧记录）
+      try {
+        var uid = getUserId();
+        var resKey = 'library_reserve_times_' + (uid || 'default');
+        var allTimes = JSON.parse(localStorage.getItem(resKey) || '{}');
+        var bkId = String(bookId);
+        if (!allTimes[bkId]) allTimes[bkId] = [];
+        allTimes[bkId].push(new Date().toISOString());
+        localStorage.setItem(resKey, JSON.stringify(allTimes));
+      } catch(e) {}
+      // 刷新图书数据以检查库存变化
+      var refreshResp = await fetch(API_BASE + '/books/' + bookId);
+      var refreshData = await refreshResp.json();
+      if (refreshData.success) bookData = refreshData.data;
+      // 只刷新借阅状态，不再重新验证预约状态（避免 API 返回格式问题覆盖 userReserved）
+      await loadMyBorrowStatus();
+      renderBookDetail(bookData);
+    } else {
+      // 如果用户曾借阅归还，后端复用旧预约记录（状态 PENDING），API 返回"已预约"时也算成功
+      if (userReturned && data.msg && (data.msg.indexOf('预约') !== -1 || data.msg.indexOf('存在') !== -1)) {
+        showToast('预约成功（复用已有记录）', 'success');
+        userReserved = true;
+        // 始终保存手动预约标记
+        try {
+          var reIds2 = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+          if (reIds2.indexOf(bookId) === -1) reIds2.push(bookId);
+          localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds2));
+        } catch(e) {}
+        // 保存独立预约时间
+        try {
+          var uid2 = getUserId();
+          var resKey2 = 'library_reserve_times_' + (uid2 || 'default');
+          var allTimes2 = JSON.parse(localStorage.getItem(resKey2) || '{}');
+          var bkId2 = String(bookId);
+          if (!allTimes2[bkId2]) allTimes2[bkId2] = [];
+          allTimes2[bkId2].push(new Date().toISOString());
+          localStorage.setItem(resKey2, JSON.stringify(allTimes2));
+        } catch(e) {}
+        var refreshResp2 = await fetch(API_BASE + '/books/' + bookId);
+        var refreshData2 = await refreshResp2.json();
+        if (refreshData2.success) bookData = refreshData2.data;
+        await loadMyBorrowStatus();
+        renderBookDetail(bookData);
+      } else {
+        showToast(data.msg || '预约失败', 'error');
+      }
+    }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+// 预约后直接借阅（已预约且现在有库存）
+async function handleBorrowFromReserve() {
+
+  var uid = getUserId();
+  if (!uid) { showToast('请先登录', 'error'); return; }
+  if (!confirm('确定要借阅这本书吗？')) return;
+  try {
+    var resp = await fetch(API_BASE + '/borrow/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ userId: uid, bookId: bookId, borrowDays: 30 })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('借阅成功 ✅', 'success');
+      // 借阅成功，清理 manualReReservedBookIds（该预约周期结束）
+      try {
+        var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+        var idx = reIds.indexOf(Number(bookId));
+        if (idx !== -1) reIds.splice(idx, 1);
+        localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+      } catch(e) {}
+      setTimeout(function(){ location.reload(); }, 800);
+    } else { showToast(data.msg || '借阅失败', 'error'); }
+  } catch (e) { showToast('网络错误', 'error'); }
+}
+
+function renderBookDetail(book) {
+  bookData = book;
+  var container = document.getElementById('detailContainer');
+  if (!book) {
+    container.innerHTML = '<div class="loading">图书不存在</div>';
+    return;
+  }
+
+  var availableCopies = v(book, 'availableCopies', 'available_copies') || 0;
+  var totalCopies = v(book, 'totalCopies', 'total_copies') || 0;
+  var available = availableCopies > 0;
+  var actionHtml = '';
+  // 如果已归还且未重新预约，预约已结束，不显示预约状态
+  if (userReserved && userReturned) {
+    try {
+      var rr = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+      if (rr.indexOf(Number(bookId)) === -1) userReserved = false;
+    } catch(e) {}
+  }
+
+  // 优先级：已借阅 > 预约已生效可借阅(FULFILLED) > 已预约且有库存(PENDING+库存) > 已预约 > 可借 > 暂不可借
+  if (userBorrowed) {
+    actionHtml = '<button class="btn btn-borrowed" disabled>📖 已借阅</button>';
+  } else if (userFulfilled && availableCopies > 0) {
+    // 预约已生效（FULFILLED），库存充足：显示立即借阅
+    actionHtml = '<button class="btn btn-primary" onclick="handleBorrowFromReserve()">📖 预约可借阅，立即借阅</button>';
+    actionHtml += ' <button class="btn btn-cancel" onclick="cancelReservationFromDetail()">取消预约</button>';
+  } else if (userReserved && availableCopies > 0) {
+    // 已预约且现在有库存：显示「立即借阅」按钮
+    actionHtml = '<button class="btn btn-primary" onclick="handleBorrowFromReserve()">📖 预约可借阅，立即借阅</button>';
+    actionHtml += ' <button class="btn btn-cancel" onclick="cancelReservationFromDetail()">取消预约</button>';
+
+  } else if (userReserved) {
+    // 已预约但无库存：显示已预约
+    var reText = userReturned ? '（重新预约）' : '';
+    actionHtml = '<button class="btn btn-warning" disabled>✅ 已预约' + reText + '</button>';
+      actionHtml += ' <button class="btn btn-cancel" onclick="cancelReservationFromDetail()">取消预约</button>';
+
+  } else if (available) {
+    actionHtml = '<button class="btn btn-primary" onclick="handleBorrow()">📖 借阅此书</button>';
+  } else {
+    actionHtml = '<button class="btn btn-warning" onclick="handleReserve()">🔔 预约此书</button>';
+  }
+
+  var statusClass, statusText;
+  if (userBorrowed) {
+    statusClass = 'badge-borrowed'; statusText = '已借阅';
+  } else if (userFulfilled || userReserved) {
+    // 预约的书可借：保留"已预约"状态，同时提示可借阅
+    if (availableCopies > 0) {
+      statusClass = 'badge-canborrow'; statusText = '已预约（可借阅）';
+    } else {
+      statusClass = 'badge-reserved'; statusText = userReturned ? '重新预约' : '已预约';
+    }
+  } else if (available) {
+    statusClass = 'badge-available'; statusText = '可借阅';
+  } else {
+    statusClass = 'badge-unavailable'; statusText = '暂不可借';
+  }
+
+  var coverUrl = v(book, 'coverUrl', 'cover_url', 'cover');
+  var coverHtml;
+  if (coverUrl && /^https?:\/\//.test(String(coverUrl).trim())) {
+    coverHtml = '<div class="detail-cover"><img src="' + escapeHtml(coverUrl) + '" alt="" data-book="' + JSON.stringify(book).replace(/"/g,'&quot;') + '" onerror="imgError(this)"></div>';
+  } else {
+    // 无有效封面 URL → 直接使用动态封面
+    coverHtml = '<div class="detail-cover">' + generateDynamicCover(book) + '</div>';
+  }
+
+  var catName = book.category ? book.category.name : '未分类';
+  var userName = getUserName();
+
+  container.innerHTML = '<div class="detail-card">' +
+    coverHtml +
+    '<div class="detail-body">' +
+    '<h2>' + escapeHtml(book.title || '') + '</h2>' +
+    '<div class="detail-meta">' +
+    '<div class="meta-item"><strong>作者：</strong>' + escapeHtml(v(book, 'author') || '未知') + '</div>' +
+    '<div class="meta-item"><strong>出版社：</strong>' + escapeHtml(v(book, 'publisher') || '未知') + '</div>' +
+    '<div class="meta-item"><strong>出版年份：</strong>' + (v(book, 'publishYear', 'publish_year') || '未知') + '</div>' +
+    '<div class="meta-item"><strong>ISBN：</strong>' + escapeHtml(v(book, 'isbn') || '无') + '</div>' +
+    '<div class="meta-item"><strong>分类：</strong>' + escapeHtml(catName) + '</div>' +
+    '<div class="meta-item"><strong>馆藏位置：</strong>' + escapeHtml(v(book, 'location') || '未知') + '</div>' +
+    '</div>' +
+    '<div class="detail-status">' +
+    '<span class="status-badge ' + statusClass + '">' + statusText + '</span>' +
+    '<span class="copies-text">可借数量：' + availableCopies + ' / 总数量：' + totalCopies + '</span>' +
+    '</div>' +
+    '<div class="detail-desc">' + escapeHtml(v(book, 'description') || '暂无简介') + '</div>' +
+    '<div class="action-bar">' + actionHtml + '</div>' +
+    '</div>' +
+    '</div>' +
+    '<div class="add-review" style="margin-top:20px;">' +
+    '<div class="section-title">写书评</div>' +
+    '<div class="reviewer-row">' +
+    '<span>评论者：<span class="reviewer-name" id="reviewerName">' + escapeHtml(userName) + '</span></span>' +
+    '<label><input type="checkbox" id="anonymousCheck" onchange="onAnonymousChange(this)"> 匿名发表</label>' +
+    '</div>' +
+    '<div class="star-select" id="starSelect">' +
+    '<span onclick="setStars(1)">★</span><span onclick="setStars(2)">★</span><span onclick="setStars(3)">★</span><span onclick="setStars(4)">★</span><span onclick="setStars(5)">★</span>' +
+    '</div>' +
+    '<textarea id="reviewContent" placeholder="写下你的书评（可选，不填则只显示评分）..."></textarea>' +
+    '<div class="review-tip">💡 只需选择评分即可发表，文字内容可选填</div>' +
+    '<button class="btn btn-primary" style="margin-top:10px;" onclick="submitReview()">发表书评</button>' +
+    '</div>' +
+    '<div class="section-title" style="margin-top:24px;">书评列表</div>' +
+    '<div id="reviewList"></div>' +
+    '<div class="recommend-section" id="recommendSection">' +
+    '<div class="section-title">📚 同类推荐</div>' +
+    '<div class="recommend-loading" id="recommendList">正在加载同类推荐...</div>' +
+    '</div>';
+
+  window.setStars = function(n) {
+    var spans = document.querySelectorAll('#starSelect span');
+    spans.forEach(function(s, i) { s.classList.toggle('active', i < n); });
+  };
+
+  window.onAnonymousChange = function(cb) {
+    var nameEl = document.getElementById('reviewerName');
+    if (cb.checked) {
+      nameEl.textContent = '匿名用户';
+      nameEl.style.color = '#999';
+    } else {
+      nameEl.textContent = userName;
+      nameEl.style.color = '#333';
+    }
+  };
+
+  loadReviews();
+  loadSameCategoryRecommendations(book);
+}
+
+// 加载同分类推荐
+async function loadSameCategoryRecommendations(book) {
+  var container = document.getElementById('recommendList');
+  if (!container) return;
+  var catId = null;
+  if (book.category) {
+    catId = book.category.id;
+  }
+  if (!catId) {
+    container.innerHTML = '<div class="recommend-loading">暂无同类推荐</div>';
+    return;
+  }
+  try {
+    var resp = await fetch(API_BASE + '/books/category/' + catId);
+    var data = await resp.json();
+    if (data.success && data.data) {
+      // 过滤掉当前图书，取前6本
+      var sameCat = data.data.filter(function(b) {
+        return String(b.id) !== String(bookId);
+      }).slice(0, 6);
+      renderRecommendations(sameCat);
+    } else {
+      container.innerHTML = '<div class="recommend-loading">暂无同类推荐</div>';
+    }
+  } catch (e) {
+    container.innerHTML = '<div class="recommend-loading">加载失败</div>';
+  }
+}
+
+// 渲染同分类推荐卡片
+function renderRecommendations(books) {
+  var container = document.getElementById('recommendList');
+  if (!container) return;
+  if (!books || books.length === 0) {
+    container.innerHTML = '<div class="recommend-loading">暂无同类图书</div>';
+    return;
+  }
+  var html = '<div class="recommend-grid">';
+  books.forEach(function(book) {
+    var title = escapeHtml(book.title || '未知');
+    var author = escapeHtml(v(book, 'author') || '未知作者');
+    var copies = v(book, 'availableCopies', 'available_copies') || 0;
+    var available = copies > 0;
+    var coverUrl = v(book, 'coverUrl', 'cover_url', 'cover');
+    var coverHtml;
+    if (coverUrl) {
+      // 用 data-book 存书籍数据，避免在 onerror 中嵌入 HTML 字符串导致引号破坏结构
+      coverHtml = '<img src="' + escapeHtml(coverUrl) + '" alt="" data-book="' + escapeHtml(JSON.stringify(book)) + '" onerror="imgError(this)">';
+    } else {
+      coverHtml = generateDynamicCover(book);
+    }
+    html += '<div class="recommend-card" onclick="location.href=\'detail.html?id=' + book.id + '\'">';
+    html += '<div class="rc-cover">' + coverHtml + '</div>';
+    html += '<div class="rc-info">';
+    html += '<h4 title="' + title + '">' + title + '</h4>';
+    html += '<div class="rc-author">' + author + '</div>';
+    html += '<span class="rc-status ' + (available ? 'rc-available' : 'rc-unavailable') + '">' + (available ? '可借(' + copies + ')' : '暂不可借') + '</span>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 初始化
+(async function init() {
+  if (!checkAuth()) return;
+  // 管理员账号不应访问读者端页面
+  try {
+    var u = JSON.parse(localStorage.getItem('user') || '{}');
+    if (u.role === 'admin') { location.href = '/api/admin/dashboard.html'; return; }
+  } catch(e) {}
+  bookId = parseInt(getParam('id'));
+  if (!bookId || isNaN(bookId)) {
+    document.getElementById('detailContainer').innerHTML = '<div class="loading">缺少图书ID参数</div>';
+    return;
+  }
+  try {
+    var resp = await fetch(API_BASE + '/books/' + bookId);
+    var data = await resp.json();
+    if (data.success) {
+      await Promise.all([loadMyReservationStatus(), loadMyBorrowStatus()]);
+      renderBookDetail(data.data);
+    } else {
+      document.getElementById('detailContainer').innerHTML = '<div class="loading">' + (data.msg || '图书不存在') + '</div>';
+    }
+  } catch (e) {
+    document.getElementById('detailContainer').innerHTML = '<div class="loading">加载失败，请检查网络</div>';
+  }
+})();
+</script>
+</body>
+</html>
