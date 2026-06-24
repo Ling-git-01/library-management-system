@@ -30,9 +30,9 @@ function logout() {
     const token = getToken();
     const role = getRole();
     if (!token || role !== 'admin') {
-        // 没有有效管理员身份，跳回登录页
-        const returnTo = encodeURIComponent(location.pathname);
-        window.location.replace('/api/login.html?return=' + returnTo);
+        // 登录页已删除，暂不跳转；需要登录功能时再恢复此处逻辑
+        console.log('未登录或角色非admin，但登录页已删除，允许直接访问');
+
     }
 })();
 
