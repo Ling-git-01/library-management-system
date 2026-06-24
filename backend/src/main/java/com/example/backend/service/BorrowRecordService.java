@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,8 @@ public class BorrowRecordService {
     private FineRepository fineRepo;
     @Autowired
     private UserService userService;
+    @Autowired
+    private EmailService emailService;
 
     // 借书操作（事务：扣减库存、新增借阅记录）
     @Transactional
@@ -50,44 +53,61 @@ public class BorrowRecordService {
         return borrowRepo.save(record);
     }
 
-    // 还书操作：判断逾期、生成罚金
+    // 还书操作：判断逾期、生成罚金、发送邮件
     @Transactional
     public BorrowRecord returnBook(Integer borrowId) {
         BorrowRecord record = borrowRepo.findById(borrowId).orElseThrow(() -> new RuntimeException("借阅记录不存在"));
         if(record.getStatus() == BorrowRecord.Status.returned) throw new RuntimeException("该书已归还");
-        // 1. 更新归还时间、状态
-        record.setReturnDate(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        // 1. 判断是否逾期
+        boolean isOverdue = now.isAfter(record.getDueDate());
+        long overDay = 0;
+        BigDecimal amount = BigDecimal.ZERO;
+        if (isOverdue) {
+            overDay = ChronoUnit.DAYS.between(record.getDueDate(), now);
+            amount = new BigDecimal("0.5").multiply(new BigDecimal(overDay));
+        }
+        // 2. 更新归还时间、状态
+        record.setReturnDate(now);
         record.setStatus(BorrowRecord.Status.returned);
         borrowRepo.save(record);
-        // 2. 归还图书库存+1
-        Book book = bookRepo.findById(record.getBookId()).get();
-        book.setAvailableCopies(book.getAvailableCopies() + 1);
-        bookRepo.save(book);
-        // 3. 判断是否逾期，逾期生成罚金（每日0.5元）
-        LocalDateTime now = LocalDateTime.now();
-        if(now.isAfter(record.getDueDate())){
-            long overDay = ChronoUnit.DAYS.between(record.getDueDate(), now);
-            BigDecimal amount = new BigDecimal("0.5").multiply(new BigDecimal(overDay));
+        // 3. 归还图书库存+1
+        bookRepo.findById(record.getBookId()).ifPresent(b -> {
+            b.setAvailableCopies(b.getAvailableCopies() + 1);
+            bookRepo.save(b);
+        });
+        // 4. 逾期生成罚金（每日0.5元）
+        if (isOverdue) {
             Fine fine = new Fine();
             fine.setUserId(record.getUserId());
             fine.setBorrowId(record.getId());
             fine.setAmount(amount);
-            fine.setReason("图书逾期"+overDay+"天");
+            fine.setReason("图书逾期" + overDay + "天");
             fine.setStatus(Fine.Status.unpaid);
-            fine.setCreatedAt(LocalDateTime.now());
+            fine.setCreatedAt(now);
             fineRepo.save(fine);
         }
-        return record;
-    }
-
-    // 定时任务：批量更新逾期状态
-    @Transactional
-    public void autoUpdateOverdue() {
-        List<BorrowRecord> list = borrowRepo.findOverdueRecords();
-        for(BorrowRecord br : list){
-            br.setStatus(BorrowRecord.Status.overdue);
-            borrowRepo.save(br);
+        // 5. 发送归还通知邮件（有罚金时一并告知）
+        try {
+            com.example.backend.entity.User user = userService.findUserById(record.getUserId());
+            if (user != null && user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
+                String bookTitle = "";
+                try { bookTitle = record.getBook() != null ? record.getBook().getTitle() : ""; } catch (Exception ignore) {}
+                if (isOverdue) {
+                    emailService.sendReturnNotice(
+                            user.getEmail(),
+                            user.getUsername(),
+                            bookTitle,
+                            now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
+                            overDay,
+                            amount.toString()
+                    );
+                }
+            }
+        } catch (Exception ignore) {
+            // 邮件发送失败不影响还书主流程
         }
+        return record;
     }
 
     public List<BorrowRecord> getUserBorrow(Integer userId) {

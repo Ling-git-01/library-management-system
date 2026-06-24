@@ -50,6 +50,10 @@ public class UserService implements UserDetailsService {
         return userRepo.findByUsername(username).orElseThrow(() -> new RuntimeException("用户不存在"));
     }
 
+    public User findUserById(Integer id) {
+        return userRepo.findById(id).orElseThrow(() -> new RuntimeException("用户不存在"));
+    }
+
     // 查询所有用户
     public List<User> listAllUser() {
         return userRepo.findAll();

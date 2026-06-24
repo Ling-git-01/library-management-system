@@ -64,6 +64,8 @@ public class BookService {
         existBook.setCoverUrl(book.getCoverUrl());
         existBook.setDescription(book.getDescription());
         existBook.setStatus(book.getStatus());
+        existBook.setTotalCopies(book.getTotalCopies());
+        existBook.setAvailableCopies(book.getAvailableCopies());
         return bookRepo.save(existBook);
     }
 

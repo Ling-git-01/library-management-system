@@ -229,6 +229,16 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
+                            <label>出版社</label>
+                            <input type="text" name="publisher" value="${book ? book.publisher || '' : ''}" placeholder="如：人民邮电出版社">
+                        </div>
+                        <div class="form-group">
+                            <label>出版年份</label>
+                            <input type="number" name="publishYear" value="${book ? book.publishYear || '' : ''}" placeholder="如：2024" min="1000" max="2099">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
                             <label>分类</label>
                             <select name="categoryId">
                                 ${categoryOptions || '<option value="">暂无可用分类</option>'}
@@ -274,6 +284,7 @@
             if (body.categoryId) body.categoryId = parseInt(body.categoryId, 10);
             if (body.totalCopies != null) body.totalCopies = parseInt(body.totalCopies, 10);
             if (body.availableCopies != null) body.availableCopies = parseInt(body.availableCopies, 10);
+            if (body.publishYear) body.publishYear = parseInt(body.publishYear, 10);
             let url, method;
             if (isEdit) {
                 url = `/api/admin/books/update/${body.id}`;

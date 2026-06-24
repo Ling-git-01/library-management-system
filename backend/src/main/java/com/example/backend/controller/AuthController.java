@@ -54,6 +54,13 @@ public class AuthController {
             UserDetails userDetail = userService.loadUserByUsername(username);
             String token = jwtUtil.generateToken(userDetail);
             User user = userService.findUserByName(username);
+            // 检查用户状态：禁用用户禁止登录
+            if (user.getStatus() == null || user.getStatus() != 1) {
+                Map<String,Object> errRes = new HashMap<>();
+                errRes.put("success",false);
+                errRes.put("msg","该账号已被禁用，请联系管理员");
+                return ResponseEntity.badRequest().body(errRes);
+            }
             Map<String,Object> res = new HashMap<>();
             res.put("success",true);
             res.put("token",token);

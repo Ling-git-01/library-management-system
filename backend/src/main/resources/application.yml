@@ -1,6 +1,6 @@
 # 服务端口与统一API前缀
 server:
-  port: 8080
+  port: 8090
   servlet:
     context-path: /api
 

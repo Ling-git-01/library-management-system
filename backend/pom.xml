@@ -111,7 +111,6 @@
                 <version>${spring-boot.version}</version>
                 <configuration>
                     <mainClass>com.example.backend.BackendApplication</mainClass>
-                    <skip>true</skip>
                 </configuration>
                 <executions>
                     <execution>
