@@ -29,6 +29,8 @@ public class BorrowRecordService {
     private UserService userService;
     @Autowired
     private EmailService emailService;
+    @Autowired
+    private NotificationService notificationService;
 
     // 借书操作（事务：扣减库存、新增借阅记录）
     @Transactional
@@ -71,11 +73,18 @@ public class BorrowRecordService {
         record.setReturnDate(now);
         record.setStatus(BorrowRecord.Status.returned);
         borrowRepo.save(record);
-        // 3. 归还图书库存+1
-        bookRepo.findById(record.getBookId()).ifPresent(b -> {
+        // 3. 归还图书库存+1，并通知预约用户
+        final Integer returnedBookId = record.getBookId();
+        bookRepo.findById(returnedBookId).ifPresent(b -> {
             b.setAvailableCopies(b.getAvailableCopies() + 1);
             bookRepo.save(b);
         });
+        // 3.5 发送预约可借阅通知（给预约该书的其他用户）
+        try {
+            notificationService.sendReserveAvailableNotification(returnedBookId);
+        } catch (Exception ignore) {
+            // 通知发送失败不影响还书主流程
+        }
         // 4. 逾期生成罚金（每日0.5元）
         if (isOverdue) {
             Fine fine = new Fine();

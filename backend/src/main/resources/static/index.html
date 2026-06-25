@@ -198,6 +198,67 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 
 }
 .refresh-btn:hover { transform: scale(1.1); }
 
+/* 通知中心 */
+.notif-center { position: relative; display: inline-block; }
+.notif-bell-btn {
+  background: none; border: none; color: #fff; font-size: 18px;
+  cursor: pointer; position: relative; padding: 4px 8px; border-radius: 6px;
+  transition: background .3s;
+}
+.notif-bell-btn:hover { background: rgba(255,255,255,0.15); }
+.notif-badge {
+  position: absolute; top: -2px; right: -2px; background: #f44336;
+  color: #fff; font-size: 10px; min-width: 16px; height: 16px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: bold; padding: 0 3px;
+}
+.notif-badge.has-notif { animation: pulseBadge 1.5s infinite; }
+@keyframes pulseBadge {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.notif-panel {
+  position: absolute; top: 40px; right: -10px; width: 360px; max-width: 90vw;
+  background: #fff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  z-index: 9999; overflow: hidden; animation: slideDown .3s ease;
+}
+.notif-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+  font-size: 15px; font-weight: 600;
+}
+.notif-panel-header button {
+  background: rgba(255,255,255,0.2); border: none; color: #fff;
+  font-size: 12px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  transition: background .3s;
+}
+.notif-panel-header button:hover { background: rgba(255,255,255,0.35); }
+.notif-list { max-height: 320px; overflow-y: auto; }
+.notif-item {
+  display: flex; align-items: flex-start; padding: 12px 16px;
+  border-bottom: 1px solid #f5f5f5; cursor: pointer; transition: background .2s;
+  position: relative;
+}
+.notif-item:hover { background: #f9f9ff; }
+.notif-item.unread { background: #f0f7ff; }
+.notif-item.unread:hover { background: #e6f0ff; }
+.notif-icon { font-size: 22px; margin-right: 10px; flex-shrink: 0; }
+.notif-content { flex: 1; min-width: 0; }
+.notif-title { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 3px; }
+.notif-text { font-size: 12px; color: #666; line-height: 1.4; word-break: break-all; }
+.notif-time { font-size: 11px; color: #aaa; margin-top: 4px; }
+.notif-actions { display: flex; gap: 6px; margin-top: 6px; }
+.notif-actions button {
+  font-size: 11px; padding: 3px 8px; border: none; border-radius: 4px;
+  cursor: pointer; transition: all .2s;
+}
+.notif-read-btn { background: #e3f2fd; color: #1976d2; }
+.notif-read-btn:hover { background: #bbdefb; }
+.notif-del-btn { background: #ffebee; color: #c62828; }
+.notif-del-btn:hover { background: #ffcdd2; }
+.notif-empty { text-align: center; padding: 30px; color: #999; font-size: 13px; }
+
 .empty { text-align: center; padding: 60px 20px; color: #bbb; font-size: 16px; }
 
 /* Toast */
@@ -228,7 +289,21 @@ body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 
     <div class="header-right">
       <span id="welcomeUser" style="color:#fff;font-size:14px;margin-right:4px;"></span>
       <a href="profile.html" id="profileLink">👤 个人中心</a>
-      <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+      <div class="notif-center" id="notifCenter">
+        <button class="notif-bell-btn" onclick="toggleNotifPanel(event)" title="消息通知">
+          🔔
+          <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+        </button>
+        <div class="notif-panel" id="notifPanel" style="display:none;">
+          <div class="notif-panel-header">
+            <span>📢 通知中心</span>
+            <button onclick="markAllNotifRead()">全部已读</button>
+          </div>
+          <div class="notif-list" id="notifList">
+            <div class="notif-empty">暂无通知</div>
+          </div>
+        </div>
+      </div>
       <a href="javascript:void(0)" onclick="doLogout()" style="color:#ffeb3b;font-size:13px;">退出登录</a>
     </div>
   </div>
@@ -541,7 +616,7 @@ async function initPage() {
   } catch(e) {}
 
   // 加载数据
-  await Promise.all([loadCategories(), loadMyReservations(), loadMyBorrowStatus()]);
+  await Promise.all([loadCategories(), loadMyReservations(), loadMyBorrowStatus(), loadNotifList()]);
 
   // 核对 FULFILLED 预约是否已闭环
   reconcileFulfilledReservations();
@@ -560,7 +635,7 @@ async function initPage() {
 window.addEventListener('pageshow', function(event) {
   if (event.persisted) {
     // 从 bfcache 恢复，重新加载数据
-    Promise.all([loadMyReservations(), loadMyBorrowStatus(), loadPersonalBorrowRank()]).then(function() {
+    Promise.all([loadMyReservations(), loadMyBorrowStatus(), loadPersonalBorrowRank(), loadNotifList()]).then(function() {
       reconcileFulfilledReservations();
       renderBooks();
       checkNewCanBorrow();
@@ -807,6 +882,9 @@ function renderBooks() {
       actionsHtml = '<button class="card-btn card-btn-reserve" onclick="event.stopPropagation(); cancelReservationFromHome(\'' + bid + '\')">取消预约</button>';
     } else if (available > 0) {
       actionsHtml = '<button class="card-btn card-btn-borrow" onclick="event.stopPropagation(); location.href=\'detail.html?id=' + bid + '\'">📖 借阅</button>';
+    } else {
+      // 暂不可借，显示预约按钮
+      actionsHtml = '<button class="card-btn card-btn-reserve" onclick="event.stopPropagation(); reserveBookFromHome(\'' + bid + '\')">🔔 预约</button>';
     }
 
     html += '<div class="book-card" onclick="location.href=\'detail.html?id=' + bid + '\'">' +
@@ -992,6 +1070,49 @@ async function cancelReservationFromHome(bookId) {
   } catch(e) { showToast('网络错误', 'error'); }
 }
 
+// ========== 首页预约图书 ==========
+async function reserveBookFromHome(bookId) {
+  if (!userId) { showToast('请先登录', 'error'); return; }
+  try {
+    var resp = await fetch(API_BASE + '/reserve/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ userId: userId, bookId: bookId })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('预约成功', 'success');
+      // 保存手动预约标记
+      try {
+        var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+        if (reIds.indexOf(Number(bookId)) === -1) reIds.push(Number(bookId));
+        localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+      } catch(e) {}
+      // 刷新状态
+      await Promise.all([loadMyReservations(), loadMyBorrowStatus()]);
+      reconcileFulfilledReservations();
+      renderBooks();
+      updateNotifBadge();
+    } else {
+      // 如果已存在预约记录（复用旧记录），也算成功
+      if (data.msg && (data.msg.indexOf('预约') !== -1 || data.msg.indexOf('存在') !== -1)) {
+        showToast('预约成功', 'success');
+        try {
+          var reIds = JSON.parse(localStorage.getItem('manualReReservedBookIds') || '[]');
+          if (reIds.indexOf(Number(bookId)) === -1) reIds.push(Number(bookId));
+          localStorage.setItem('manualReReservedBookIds', JSON.stringify(reIds));
+        } catch(e) {}
+        await Promise.all([loadMyReservations(), loadMyBorrowStatus()]);
+        reconcileFulfilledReservations();
+        renderBooks();
+        updateNotifBadge();
+      } else {
+        showToast(data.msg || '预约失败', 'error');
+      }
+    }
+  } catch(e) { showToast('网络错误', 'error'); }
+}
+
 // ========== 可借阅通知 ==========
 function checkNewCanBorrow() {
   userCanBorrowBookIds.clear();
@@ -1068,13 +1189,135 @@ function markNotifByBookIds(bids) {
   } catch(e) {}
 }
 
-// ========== 未读角标 ==========
-function updateNotifBadge() {
+// ========== 通知中心 ==========
+var allNotifications = [];
+
+function toggleNotifPanel(e) {
+  e.stopPropagation();
+  var panel = document.getElementById('notifPanel');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    loadNotifList();
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+// 点击页面其他地方关闭通知面板
+document.addEventListener('click', function(e) {
+  var panel = document.getElementById('notifPanel');
+  var center = document.getElementById('notifCenter');
+  if (panel && center && !center.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
+
+async function loadNotifList() {
+  if (!userId) return;
   try {
-    var key = 'library_notifications_' + userId;
-    var raw = localStorage.getItem(key);
-    var notifs = raw ? JSON.parse(raw) : [];
-    var unread = notifs.filter(function(n) { return !n.read; }).length;
+    var resp = await fetch(API_BASE + '/notif/list?userId=' + userId, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success && data.data) {
+      allNotifications = data.data;
+      renderNotifList();
+    }
+  } catch(e) {}
+}
+
+function renderNotifList() {
+  var container = document.getElementById('notifList');
+  if (!allNotifications || !allNotifications.length) {
+    container.innerHTML = '<div class="notif-empty">暂无通知</div>';
+    return;
+  }
+  var html = '';
+  allNotifications.forEach(function(n) {
+    var isUnread = !n.read;
+    var icon = '📢';
+    if (n.type === 'reserve_available') icon = '📖';
+    else if (n.type === 'borrow_due') icon = '⏰';
+    else if (n.type === 'fine_notice') icon = '💰';
+    var time = formatDate(n.createdAt || n.created_at);
+    var bookId = n.bookId || n.book_id;
+    var clickAction = bookId ? 'onclick="goToBookFromNotif(' + bookId + ')"' : '';
+    html += '<div class="notif-item ' + (isUnread ? 'unread' : '') + '" ' + clickAction + '>' +
+      '<div class="notif-icon">' + icon + '</div>' +
+      '<div class="notif-content">' +
+        '<div class="notif-title">' + escapeHtml(n.title || '系统通知') + '</div>' +
+        '<div class="notif-text">' + escapeHtml(n.content || '') + '</div>' +
+        '<div class="notif-time">' + time + '</div>' +
+        '<div class="notif-actions">' +
+          (isUnread ? '<button class="notif-read-btn" onclick="event.stopPropagation(); markNotifRead(' + n.id + ')">标记已读</button>' : '') +
+          '<button class="notif-del-btn" onclick="event.stopPropagation(); deleteNotif(' + n.id + ')">删除</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function goToBookFromNotif(bookId) {
+  document.getElementById('notifPanel').style.display = 'none';
+  location.href = 'detail.html?id=' + bookId;
+}
+
+async function markNotifRead(notifId) {
+  try {
+    var resp = await fetch(API_BASE + '/notif/read/' + notifId, {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      await Promise.all([loadNotifList(), updateNotifBadge()]);
+    }
+  } catch(e) {}
+}
+
+async function markAllNotifRead() {
+  if (!userId) return;
+  try {
+    var resp = await fetch(API_BASE + '/notif/read-all', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      await Promise.all([loadNotifList(), updateNotifBadge()]);
+    }
+  } catch(e) {}
+}
+
+async function deleteNotif(notifId) {
+  if (!confirm('确定删除这条通知吗？')) return;
+  try {
+    var resp = await fetch(API_BASE + '/notif/delete/' + notifId, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    var data = await resp.json();
+    if (data.success) {
+      await Promise.all([loadNotifList(), updateNotifBadge()]);
+    }
+  } catch(e) {}
+}
+
+// ========== 未读角标 ==========
+async function updateNotifBadge() {
+  try {
+    var total = 0;
+    // 从后端获取未读通知数
+    if (userId) {
+      try {
+        var resp = await fetch(API_BASE + '/notif/unread-count', {
+          headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        var data = await resp.json();
+        if (data.success) total += parseInt(data.data || 0);
+      } catch(e) {}
+    }
     // 加上可借阅的预约书本数（未被 dismiss 的）
     var canBorrowCount = 0;
     Object.keys(userFulfilledMap).forEach(function(bid) {
@@ -1082,17 +1325,16 @@ function updateNotifBadge() {
       var book = allBooks.find(function(b) { return String(v(b, 'id')) === bid; });
       if (book && parseInt(v(book, 'availableCopies', 'available_copies') || 0) > 0) canBorrowCount++;
     });
-    var total = unread + canBorrowCount;
+    total += canBorrowCount;
     var badge = document.getElementById('notifBadge');
     if (total > 0) {
       badge.textContent = total > 99 ? '99+' : total;
       badge.style.display = 'inline-block';
-      badge.className = 'notif-badge has-notif';  // 添加脉冲动画
+      badge.className = 'notif-badge has-notif';
     } else {
       badge.style.display = 'none';
-      badge.className = 'notif-badge';  // 移除脉冲动画
+      badge.className = 'notif-badge';
     }
-    // 保存到 localStorage
     localStorage.setItem('library_unread_notif_count', String(total));
   } catch(e) {}
 }
@@ -1150,7 +1392,7 @@ function toggleRank() {
 // ========== 刷新 ==========
 function doRefresh() {
   showToast('正在刷新...', 'success');
-  Promise.all([loadMyReservations(), loadMyBorrowStatus(), loadPersonalBorrowRank()]).then(function() {
+  Promise.all([loadMyReservations(), loadMyBorrowStatus(), loadPersonalBorrowRank(), loadNotifList()]).then(function() {
     reconcileFulfilledReservations();
     loadBooks();
     checkNewCanBorrow();
@@ -1167,7 +1409,7 @@ loadPersonalBorrowRank();
 document.addEventListener('visibilitychange', function() {
   if (!document.hidden) {
     // 页面从后台切换回来，静默刷新预约状态和借阅状态
-    Promise.all([loadMyReservations(), loadMyBorrowStatus()]).then(function() {
+    Promise.all([loadMyReservations(), loadMyBorrowStatus(), loadNotifList()]).then(function() {
       reconcileFulfilledReservations();
       renderBooks();
       checkNewCanBorrow();
@@ -1183,7 +1425,8 @@ setInterval(function() {
   Promise.all([
     loadBooks(true),
     loadMyReservations(),
-    loadMyBorrowStatus()
+    loadMyBorrowStatus(),
+    loadNotifList()
   ]).then(function() {
     reconcileFulfilledReservations();
     renderBooks();

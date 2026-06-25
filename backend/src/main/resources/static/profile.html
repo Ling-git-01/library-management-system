@@ -54,7 +54,8 @@ tr:hover { background: #fafafa; }
 }
 .btn-green { background: #43a047; color: #fff; }
 .btn-green:hover { background: #388e3c; }
-.btn-green:disabled { background: #ccc; cursor: not-allowed; }
+.btn-green:disabled { background: #ccc; cursor: not-allowed; color: #888; }
+.btn-gray { background: #ccc; color: #888; cursor: not-allowed; }
 .btn-red { background: #e53935; color: #fff; }
 .btn-red:hover { background: #c62828; }
 .btn-red:disabled { background: #ccc; cursor: not-allowed; }
@@ -66,6 +67,7 @@ tr:hover { background: #fafafa; }
 .status-returned { color: #43a047; font-weight: 600; }
 .status-borrowing { color: #667eea; font-weight: 600; }
 .status-overdue { color: #e53935; font-weight: 600; }
+.status-fulfilled { color: #f57c00; font-weight: 600; }
 .status-pending { color: #ff9800; font-weight: 600; }
 .status-cancelled { color: #999; font-weight: 400; }
 
@@ -95,6 +97,32 @@ tr:hover { background: #fafafa; }
   min-width: 16px; height: 16px; line-height: 16px; text-align: center;
   border-radius: 8px; margin-left: 4px; padding: 0 4px; vertical-align: top;
 }
+
+/* 缴纳弹窗 */
+.pay-modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 1000; display: none;
+  justify-content: center; align-items: center;
+}
+.pay-modal-overlay.active { display: flex; }
+.pay-modal {
+  background: #fff; border-radius: 12px; padding: 24px; max-width: 380px; width: 90%;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2); text-align: center;
+  animation: popIn .3s;
+}
+.pay-modal h3 { margin-bottom: 16px; color: #333; font-size: 18px; }
+.pay-modal img { width: 220px; height: 220px; object-fit: contain; border-radius: 8px; margin-bottom: 12px; }
+.pay-modal p { color: #666; font-size: 14px; margin-bottom: 20px; }
+.pay-modal .btn-group { display: flex; gap: 12px; justify-content: center; }
+.pay-modal .btn-modal {
+  padding: 10px 24px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer;
+  font-weight: 500; transition: all .3s;
+}
+.pay-modal .btn-modal-yes { background: #43a047; color: #fff; }
+.pay-modal .btn-modal-yes:hover { background: #388e3c; }
+.pay-modal .btn-modal-no { background: #f0f0f0; color: #555; }
+.pay-modal .btn-modal-no:hover { background: #e0e0e0; }
+@keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
 </style>
 </head>
 <body>
@@ -136,6 +164,19 @@ tr:hover { background: #fafafa; }
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 缴纳弹窗 -->
+<div class="pay-modal-overlay" id="payModal">
+  <div class="pay-modal">
+    <h3>💰 缴纳罚金</h3>
+    <img src="images/pay-qr.png" alt="微信支付二维码">
+    <p>请使用微信扫码支付，支付完成后请点击下方按钮</p>
+    <div class="btn-group">
+      <button class="btn-modal btn-modal-yes" onclick="confirmPayYes()">✅ 已成功缴纳</button>
+      <button class="btn-modal btn-modal-no" onclick="confirmPayNo()">❌ 未缴纳</button>
+    </div>
+  </div>
+</div>
 
 <script>
 var API_BASE = '/api';
@@ -220,16 +261,16 @@ async function loadBorrows() {
   var tableEl = document.getElementById('borrowTable');
   tableEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ 正在加载最新数据...</div>';
   try {
-    var resp = await fetch(API_BASE + '/borrow/user/' + uid, {
-      headers: { 'Authorization': 'Bearer ' + getToken() }
-    });
-    var data = await resp.json();
-    if (data.success) {
-      borrowData = data.data || [];
-      renderBorrows();
-    } else {
-      tableEl.innerHTML = '<div class="empty">加载失败</div>';
-    }
+    // 同时加载借阅数据和预约数据
+    var [brResp, rsResp] = await Promise.all([
+      fetch(API_BASE + '/borrow/user/' + uid, { headers: { 'Authorization': 'Bearer ' + getToken() } }),
+      fetch(API_BASE + '/reserve/user/' + uid, { headers: { 'Authorization': 'Bearer ' + getToken() } })
+    ]);
+    var brData = await brResp.json();
+    var rsData = await rsResp.json();
+    if (brData.success) borrowData = brData.data || [];
+    if (rsData.success) reserveData = rsData.data || [];
+    renderBorrows();
   } catch (e) {
     tableEl.innerHTML = '<div class="empty">网络错误，请重试</div>';
   }
@@ -278,7 +319,33 @@ function parseBorrowTime(r) {
 
 function renderBorrows() {
   var container = document.getElementById('borrowTable');
-  if (borrowData.length === 0) {
+
+  // 收集 FULFILLED 预约（预约待取）——尚未借阅的
+  var fulfilledReserves = [];
+  if (reserveData && reserveData.length > 0) {
+    reserveData.forEach(function(r) {
+      var rStatus = v(r, 'status') || '';
+      if (String(rStatus).toUpperCase() === 'FULFILLED') {
+        var bid = v(r, 'bookId', 'book_id');
+        if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+        // 检查是否已借阅该书且未归还
+        var alreadyBorrowing = false;
+        for (var i = 0; i < borrowData.length; i++) {
+          var bbid = v(borrowData[i], 'bookId', 'book_id');
+          if ((bbid === undefined || bbid === null) && borrowData[i].book && borrowData[i].book.id != null) bbid = borrowData[i].book.id;
+          if (String(bbid) === String(bid)) {
+            var bs = getBorrowStatus(borrowData[i]);
+            if (!bs.returned) { alreadyBorrowing = true; break; }
+          }
+        }
+        if (!alreadyBorrowing) {
+          fulfilledReserves.push(r);
+        }
+      }
+    });
+  }
+
+  if (borrowData.length === 0 && fulfilledReserves.length === 0) {
     container.innerHTML = '<div class="empty">暂无借阅记录</div>';
     return;
   }
@@ -294,40 +361,79 @@ function renderBorrows() {
     return tb - ta;
   });
 
-  // 表格显示：图书、借阅时间、归还时间、操作
-  var html = '<table><thead><tr>' +
-    '<th>图书</th><th>借阅时间</th><th>归还时间</th><th>操作</th>' +
-    '</tr></thead><tbody>';
+  var currentBorrows = sorted.filter(function(r) { return !getBorrowStatus(r).returned; });
+  var returnedRecords = sorted.filter(function(r) { return getBorrowStatus(r).returned; });
 
-  sorted.forEach(function(r) {
-    var statusInfo = getBorrowStatus(r);
-    var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
-    var borrowDate = v(r, 'borrowDate', 'borrow_date', 'borrowTime', 'borrow_time');
-    var returnDate = v(r, 'returnDate', 'return_date', 'returnTime', 'return_time');
-    var dueDate = v(r, 'dueDate', 'due_date', 'dueTime', 'due_time');
+  var html = '';
 
-    html += '<tr>';
-    html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
-    html += '<td>' + (borrowDate ? borrowDate.substring(0, 19).replace('T', ' ') : '-') + '</td>';
-    // 归还时间：已归还时显示日期时间，否则显示应还时间（提示未归还）
-    if (returnDate) {
-      html += '<td>' + returnDate.substring(0, 19).replace('T', ' ') + '</td>';
-    } else {
+  // 1. 当前借阅（未归还）
+  if (currentBorrows.length > 0 || fulfilledReserves.length > 0) {
+    html += '<div style="margin-bottom:8px;font-size:15px;font-weight:600;color:#333;">📖 当前借阅</div>';
+    html += '<table style="margin-bottom:24px;"><thead><tr>' +
+      '<th>图书</th><th>时间</th><th>状态</th><th>应还时间</th><th>操作</th>' +
+      '</tr></thead><tbody>';
+
+    currentBorrows.forEach(function(r) {
+      var statusInfo = getBorrowStatus(r);
+      var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
+      var borrowDate = v(r, 'borrowDate', 'borrow_date', 'borrowTime', 'borrow_time');
+      var dueDate = v(r, 'dueDate', 'due_date', 'dueTime', 'due_time');
+
+      html += '<tr>';
+      html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+      html += '<td>' + (borrowDate ? borrowDate.substring(0, 19).replace('T', ' ') : '-') + '</td>';
+      html += '<td><span class="' + statusInfo.cls + '">' + statusInfo.text + '</span></td>';
       var dueText = dueDate ? dueDate.substring(0, 19).replace('T', ' ') : '未知';
-      html += '<td><span style="color:#667eea;">应还：' + dueText + '</span></td>';
-    }
-    // 操作列：未归还时显示归还按钮
-    html += '<td>';
-    if (!statusInfo.returned) {
+      html += '<td><span style="color:#667eea;">' + dueText + '</span></td>';
+      html += '<td>';
       html += '<button class="btn-sm btn-blue" onclick="returnBook(' + r.id + ')">🔄 归还</button>';
-    } else {
-      html += '<span style="color:#43a047;font-size:13px;">✅ 已归还</span>';
-    }
-    html += '</td>';
-    html += '</tr>';
-  });
+      html += '</td>';
+      html += '</tr>';
+    });
 
-  html += '</tbody></table>';
+    // 预约待取也显示在当前借阅区域
+    fulfilledReserves.forEach(function(r) {
+      var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
+      var bid = v(r, 'bookId', 'book_id');
+      if ((bid === undefined || bid === null) && r.book && r.book.id != null) bid = r.book.id;
+      var createTime = v(r, 'createTime', 'create_time', 'createdAt', 'created_at');
+      html += '<tr style="background:#fff8e1;">';
+      html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+      html += '<td>' + (createTime ? createTime.substring(0, 19).replace('T', ' ') : '-') + '</td>';
+      html += '<td><span class="status-fulfilled">预约待取</span></td>';
+      html += '<td><span style="color:#f57c00;">库存可用，请尽快借阅</span></td>';
+      html += '<td><button class="btn-sm btn-green" onclick="location.href=\'detail.html?id=' + bid + '\'">📖 去借阅</button></td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+  }
+
+  // 2. 归还记录
+  if (returnedRecords.length > 0) {
+    html += '<div style="margin-bottom:8px;font-size:15px;font-weight:600;color:#333;">✅ 归还记录</div>';
+    html += '<table><thead><tr>' +
+      '<th>图书</th><th>借阅时间</th><th>归还时间</th><th>状态</th><th>操作</th>' +
+      '</tr></thead><tbody>';
+
+    returnedRecords.forEach(function(r) {
+      var statusInfo = getBorrowStatus(r);
+      var bookTitle = r.book ? v(r.book, 'title') : ('图书#' + v(r, 'bookId', 'book_id'));
+      var borrowDate = v(r, 'borrowDate', 'borrow_date', 'borrowTime', 'borrow_time');
+      var returnDate = v(r, 'returnDate', 'return_date', 'returnTime', 'return_time');
+
+      html += '<tr>';
+      html += '<td>' + escapeHtml(bookTitle || '未知') + '</td>';
+      html += '<td>' + (borrowDate ? borrowDate.substring(0, 19).replace('T', ' ') : '-') + '</td>';
+      html += '<td>' + (returnDate ? returnDate.substring(0, 19).replace('T', ' ') : '-') + '</td>';
+      html += '<td><span class="' + statusInfo.cls + '">' + statusInfo.text + '</span></td>';
+      html += '<td><span style="color:#43a047;font-size:13px;">✅ 已归还</span></td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+  }
+
   container.innerHTML = html;
 }
 
@@ -1164,7 +1270,7 @@ function renderFines() {
     if (!paid) {
       html += '<button class="btn-sm btn-green" onclick="payFine(' + f.id + ')">缴纳</button>';
     } else {
-      html += '<button class="btn-sm btn-green" disabled>已缴纳</button>';
+      html += '<button class="btn-sm btn-gray" disabled>已缴纳</button>';
     }
     html += '</td></tr>';
   });
@@ -1173,18 +1279,37 @@ function renderFines() {
 }
 
 async function payFine(fineId) {
-  if (!confirm('确定要缴纳这笔罚金吗？')) return;
-  try {
-    var resp = await fetch(API_BASE + '/fine/pay/' + fineId, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
-    });
-    var data = await resp.json();
-    if (data.success) {
-      showToast('缴纳成功 ✅', 'success');
-      loadFines(); // 实时刷新
-    } else { showToast(data.msg || '缴纳失败', 'error'); }
-  } catch (e) { showToast('网络错误', 'error'); }
+  // 显示缴纳弹窗
+  pendingPayFineId = fineId;
+  document.getElementById('payModal').classList.add('active');
+}
+
+var pendingPayFineId = null;
+
+function confirmPayYes() {
+  // 点击"已成功缴纳"：关闭弹窗，调用后端API更新状态
+  document.getElementById('payModal').classList.remove('active');
+  if (!pendingPayFineId) return;
+  var fid = pendingPayFineId;
+  pendingPayFineId = null;
+  fetch(API_BASE + '/fine/pay/' + fid, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }
+  }).then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      if (data.success) {
+        showToast('缴纳成功 ✅', 'success');
+        loadFines(); // 实时刷新
+      } else {
+        showToast(data.msg || '缴纳失败', 'error');
+      }
+    }).catch(function() { showToast('网络错误', 'error'); });
+}
+
+function confirmPayNo() {
+  // 点击"未缴纳"：仅关闭弹窗，不做任何操作
+  document.getElementById('payModal').classList.remove('active');
+  pendingPayFineId = null;
 }
 
 /* ==================== 我的书评（含删除功能） ==================== */

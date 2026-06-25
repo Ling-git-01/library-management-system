@@ -49,23 +49,20 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .authorizeRequests()
                 // 开放登录、注册、图书、分类接口
                 // 1. 所有公开接口（Day2+Day3全部免登录）
-                .antMatchers("/auth/**","/books/**","/category/**","/borrow/**","/reserve/**","/fine/**","/review/**").permitAll()
+                .antMatchers("/auth/**","/books/**","/category/**","/borrow/**","/reserve/**","/fine/**","/review/**","/notif/**").permitAll()
+
+                // 2. 静态资源（含 admin 前端页面）全部放行
                 .antMatchers(
-                        "/",
-                        "/login.html", "/register.html", "/index.html",
-                        "/admin/**/*.html",
-                        "/admin/**/*.js",
-                        "/admin/**/*.css",
-                        "/admin/**/*.png",
-                        "/admin/**/*.jpg",
-                        "/admin/**/*.svg",
-                        "/admin/**/*.ico",
+                        "/", "/error",
+                        "/login.html", "/register.html", "/index.html", "/detail.html", "/profile.html",
+                        "/admin/**",          // ← 放行 admin 目录下所有静态文件（HTML/JS/CSS/图片）
                         "/*.html",
                         "/css/**", "/js/**", "/images/**", "/favicon.ico"
                 ).permitAll()
-                // 2. 管理员专属接口
-                .antMatchers("/admin/**").hasRole("admin")
-                // 3. 所有其他接口必须登录
+
+                // 3. 管理员 API 接口需 admin 角色（不影响上面的静态资源放行）
+                .antMatchers("/admin/books/**","/admin/borrow/**","/admin/user/**","/admin/category/**","/admin/reserve/**","/admin/fine/**").hasRole("admin")
+                // 4. 所有其他接口必须登录
                 .anyRequest().authenticated();
     }
 }
